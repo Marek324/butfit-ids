@@ -848,12 +848,12 @@ INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, 
 -- 1 -- 2/2 -- join 2 tables
 -- 2 -- 1/1 -- join 3 tables
 -- 3 -- 2/2 -- GROUP BY + aggregation
--- 4 -- 0/1 -- EXISTS
--- 5 -- 0/1 -- IN + nested SELECT
+-- 4 -- 1/1 -- EXISTS
+-- 5 -- 1/1 -- IN + nested SELECT
 
 -- 1 -- Accounts owned by one client based on his name
 SELECT
-    CONCAT(C.FirstName, CONCAT(' ', C.LastName)) AS Client,
+    C.FirstName || ' ' || C.LastName AS Client,
     A.AccountID,
     A.CurrencyCode,
     A.Balance
@@ -862,7 +862,7 @@ FROM
 JOIN
     Account A ON C.ClientID = A.OwnerID
 WHERE
-    CONCAT(C.FirstName, CONCAT(' ', C.LastName)) = 'Paul Kerluke'
+    C.FirstName || ' ' || C.LastName = 'Paul Kerluke'
 ORDER BY A.Balance DESC;
 
 -- 1 -- Account details with owner's name
@@ -871,17 +871,14 @@ SELECT
     A.Balance,
     A.CurrencyCode,
     A.CreationDate,
-    CONCAT(C.FirstName, CONCAT(' ', C.LastName)) AS Owner
+    C.FirstName || ' ' || C.LastName AS Owner
 FROM
     Account A
 JOIN
-    Client C ON A.OwnerID = C.ClientID
-WHERE
-    A.AccountID = 16;
+    Client C ON A.OwnerID = C.ClientID;
 
 -- 2 -- Accounts that client have authorized access to
 SELECT
-    CONCAT(C.FirstName, CONCAT(' ', C.LastName)) AS Client,
     A.AccountID,
     AA.AuthorizedLimit AS Limit,
     A.CurrencyCode,
@@ -899,7 +896,7 @@ ORDER BY AA.AuthorizedLimit DESC;
 -- 3 -- Client's number of accounts and total balance
 SELECT
     C.ClientID,
-    CONCAT(C.FirstName, CONCAT(' ', C.LastName)) AS Client,
+    C.FirstName || ' ' || C.LastName AS Client,
     COUNT(A.AccountID) AS AccountCount,
     SUM(A.Balance) AS TotalBalance
 FROM
@@ -922,7 +919,7 @@ GROUP BY T.Type, T.Incoming;
 -- 4 -- Clients who have authorized access, but do not own accounts
 SELECT
     C.ClientID,
-    CONCAT(C.FirstName, CONCAT(' ', C.LastName)) AS Client
+    C.FirstName || ' ' || C.LastName AS Client
 FROM
     Client C
 WHERE
@@ -939,7 +936,22 @@ WHERE
         WHERE A.OwnerID = C.ClientID
     );
 
--- 5 -- Clients with accounts created by specific employee
-
+-- 5 -- Transactions for Accounts with Balances Above average threshold
+SELECT
+    T.*
+FROM
+    Transaction T
+WHERE T.AccountID IN (
+    SELECT
+        A.AccountID
+    FROM
+        Account A
+    WHERE A.Balance > (
+        SELECT
+            AVG(Balance)
+        FROM
+            Account
+    )
+);
 
 
