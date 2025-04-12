@@ -851,7 +851,7 @@ INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, 
 -- 4 -- 1/1 -- EXISTS
 -- 5 -- 1/1 -- IN + nested SELECT
 
--- 1 -- Accounts owned by one client based on his name
+-- 1.1 -- Accounts owned by one client based on his name
 SELECT
     C.FirstName || ' ' || C.LastName AS Client,
     A.AccountID,
@@ -865,7 +865,7 @@ WHERE
     C.FirstName || ' ' || C.LastName = 'Paul Kerluke'
 ORDER BY A.Balance DESC;
 
--- 1 -- Account details with owner's name
+-- 1.2 -- Account details with owner's name
 SELECT
     A.AccountID,
     A.Balance,
@@ -877,7 +877,7 @@ FROM
 JOIN
     Client C ON A.OwnerID = C.ClientID;
 
--- 2 -- Accounts that client have authorized access to
+-- 2.1 -- Accounts that client have authorized access to
 SELECT
     A.AccountID,
     AA.AuthorizedLimit AS Limit,
@@ -893,7 +893,7 @@ WHERE
     C.ClientID = 3
 ORDER BY AA.AuthorizedLimit DESC;
 
--- 3 -- Client's number of accounts and total balance
+-- 3.1 -- Client's number of accounts and total balance
 SELECT
     C.ClientID,
     C.FirstName || ' ' || C.LastName AS Client,
@@ -907,16 +907,16 @@ GROUP BY
     C.ClientID, C.FirstName, C.LastName
 ORDER BY C.ClientID ASC;
 
--- 3 -- Total count of transactions by type in all accounts
+-- 3.2 -- Total count of transactions by type in all accounts
 SELECT
     T.Type,
     T.Incoming,
-    COUNT(T.Type)
+    COUNT(T.Type) AS TransactionCount
 FROM
     Transaction T
 GROUP BY T.Type, T.Incoming;
 
--- 4 -- Clients who have authorized access, but do not own accounts
+-- 4.1 -- Clients who have authorized access, but do not own accounts
 SELECT
     C.ClientID,
     C.FirstName || ' ' || C.LastName AS Client
@@ -936,7 +936,7 @@ WHERE
         WHERE A.OwnerID = C.ClientID
     );
 
--- 5 -- Transactions for Accounts with Balances Above average threshold
+-- 5.1 -- Transactions for Accounts with Balances Above average threshold
 SELECT
     T.*
 FROM
@@ -953,5 +953,4 @@ WHERE T.AccountID IN (
             Account
     )
 );
-
 
