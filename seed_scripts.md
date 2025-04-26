@@ -126,11 +126,11 @@ for (let i = 1; i <= 250; i++) {
   const amount = Math.floor(Math.random() * 3000 * 100) / 100 + 1;
   const incoming = Math.random() < 0.5 ? 0 : 1;
   const type = Math.random() < 0.5 ? 'Movement' : 'Transfer';
-  data += `INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type`;
+  data += `INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type`;
 
   if (type === 'Transfer') data += `, IBAN`;
 
-  data += `) VALUES<br>(${i}, ${accountID}, TO_TIMESTAMP('${transactionTime}', 'YYYY-MM-DD HH24:MI:SS'), ${amount}, ${incoming}, '${type}'`;
+  data += `) VALUES<br>(${accountID}, TO_TIMESTAMP('${transactionTime}', 'YYYY-MM-DD HH24:MI:SS'), ${amount}, ${incoming}, '${type}'`;
 
   if (type === 'Transfer') {
     const iban = faker.finance.iban();

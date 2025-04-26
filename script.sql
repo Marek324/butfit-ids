@@ -3,6 +3,7 @@ DROP TABLE AuthorizedAccess CASCADE CONSTRAINTS;
 DROP TABLE Account CASCADE CONSTRAINTS;
 DROP TABLE Employee CASCADE CONSTRAINTS;
 DROP TABLE Client CASCADE CONSTRAINTS;
+DROP SEQUENCE TransactionSerialNumSeq;
 
 -- Create Client table
 CREATE TABLE Client (
@@ -41,9 +42,14 @@ CREATE TABLE AuthorizedAccess (
     CONSTRAINT AuthorizedAccessPK PRIMARY KEY (ClientID, AccountID)
 );
 
+CREATE SEQUENCE TransactionSerialNumSeq
+    START WITH 1
+    INCREMENT BY 1
+    NOCACHE;
+
 -- Create Transaction table
 CREATE TABLE Transaction (
-    SerialNumber NUMBER NOT NULL,
+    SerialNumber NUMBER,
     AccountID NUMBER NOT NULL,
     PRIMARY KEY (SerialNumber, AccountID),
     FOREIGN KEY (AccountID) REFERENCES Account(AccountID),
@@ -53,6 +59,54 @@ CREATE TABLE Transaction (
     Type VARCHAR2(8) NOT NULL CHECK(Type IN('Movement', 'Transfer')),
     IBAN VARCHAR2(34)
 );
+
+CREATE OR REPLACE TRIGGER TransactionSerialNumTrigger
+BEFORE INSERT ON Transaction
+FOR EACH ROW
+BEGIN
+  IF :NEW.SerialNumber IS NULL THEN
+    :NEW.SerialNumber := TransactionSerialNumSeq.NEXTVAL;
+  END IF;
+END;
+
+-- 4.1.1 -- Update account's balance on new transaction
+CREATE OR REPLACE TRIGGER AccountBalanceUpdate
+AFTER INSERT ON Transaction
+FOR EACH ROW
+BEGIN
+    IF :NEW.Incoming = 1 THEN
+        UPDATE Account
+        SET Balance = Balance + :NEW.Amount
+        WHERE AccountID = :NEW.AccountID;
+    ELSE
+        UPDATE Account
+        SET Balance = Balance - :NEW.Amount
+        WHERE AccountID = :NEW.AccountID;
+    END IF;
+END;
+
+-- 4.1.2 -- Prevent overdraft
+CREATE OR REPLACE TRIGGER PreventOverdraft
+BEFORE INSERT ON Transaction
+FOR EACH ROW
+DECLARE
+    accBalance NUMBER;
+    err EXCEPTION;
+BEGIN
+    IF :NEW.Incoming = 0 THEN
+        SELECT Balance INTO accBalance
+        FROM Account
+        WHERE AccountID = :NEW.AccountID;
+
+        IF :NEW.Amount > accBalance THEN
+            RAISE err;
+        END IF;
+    END IF;
+
+EXCEPTION
+    WHEN err THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Insufficient funds: Transaction would cause overdraft.');
+END;
 
 -- INSERT --
 --  Client table
@@ -141,105 +195,105 @@ INSERT INTO Employee (TelNumber, Email) VALUES
 
 -- Account table
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-07-07', 'YYYY-MM-DD'), 10121.54, 'IRR', 12, 9);
+(TO_DATE('2022-07-07', 'YYYY-MM-DD'), 0, 'IRR', 12, 9);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-12-30', 'YYYY-MM-DD'), 6641.31, 'JOD', 5, 19);
+(TO_DATE('2021-12-30', 'YYYY-MM-DD'), 0, 'JOD', 5, 19);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-11-08', 'YYYY-MM-DD'), 16146.06, 'XAF', 10, 14);
+(TO_DATE('2022-11-08', 'YYYY-MM-DD'), 0, 'XAF', 10, 14);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-05-03', 'YYYY-MM-DD'), 13967.15, 'SHP', 11, 5);
+(TO_DATE('2022-05-03', 'YYYY-MM-DD'), 0, 'SHP', 11, 5);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2023-04-02', 'YYYY-MM-DD'), 5201.1, 'KHR', 6, 18);
+(TO_DATE('2023-04-02', 'YYYY-MM-DD'), 0, 'KHR', 6, 18);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-10-02', 'YYYY-MM-DD'), 17302.57, 'INR', 10, 12);
+(TO_DATE('2022-10-02', 'YYYY-MM-DD'), 0, 'INR', 10, 12);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-05-24', 'YYYY-MM-DD'), 484.94, 'GHS', 6, 7);
+(TO_DATE('2021-05-24', 'YYYY-MM-DD'), 0, 'GHS', 6, 7);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-04-20', 'YYYY-MM-DD'), 18283.9, 'KHR', 12, 3);
+(TO_DATE('2022-04-20', 'YYYY-MM-DD'), 0, 'KHR', 12, 3);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-09-10', 'YYYY-MM-DD'), 8950.4, 'AWG', 1, 15);
+(TO_DATE('2022-09-10', 'YYYY-MM-DD'), 0, 'AWG', 1, 15);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-10-13', 'YYYY-MM-DD'), 5164.06, 'UGX', 20, 12);
+(TO_DATE('2021-10-13', 'YYYY-MM-DD'), 0, 'UGX', 20, 12);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-03-29', 'YYYY-MM-DD'), 13870.91, 'MXN', 19, 10);
+(TO_DATE('2022-03-29', 'YYYY-MM-DD'), 0, 'MXN', 19, 10);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-07-14', 'YYYY-MM-DD'), 7427.8, 'PLN', 3, 13);
+(TO_DATE('2022-07-14', 'YYYY-MM-DD'), 0, 'PLN', 3, 13);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-07-15', 'YYYY-MM-DD'), 3721.6, 'ZAR', 3, 17);
+(TO_DATE('2021-07-15', 'YYYY-MM-DD'), 0, 'ZAR', 3, 17);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-11-20', 'YYYY-MM-DD'), 11398.11, 'PKR', 19, 9);
+(TO_DATE('2021-11-20', 'YYYY-MM-DD'), 0, 'PKR', 19, 9);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2023-02-25', 'YYYY-MM-DD'), 16802.64, 'GYD', 15, 15);
+(TO_DATE('2023-02-25', 'YYYY-MM-DD'), 0, 'GYD', 15, 15);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2023-01-12', 'YYYY-MM-DD'), 3442.52, 'FKP', 3, 7);
+(TO_DATE('2023-01-12', 'YYYY-MM-DD'), 0, 'FKP', 3, 7);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-08-31', 'YYYY-MM-DD'), 10776.55, 'UYU', 20, 17);
+(TO_DATE('2022-08-31', 'YYYY-MM-DD'), 0, 'UYU', 20, 17);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-02-13', 'YYYY-MM-DD'), 12305.86, 'BHD', 14, 12);
+(TO_DATE('2022-02-13', 'YYYY-MM-DD'), 0, 'BHD', 14, 12);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2023-01-03', 'YYYY-MM-DD'), 12498.03, 'QAR', 9, 3);
+(TO_DATE('2023-01-03', 'YYYY-MM-DD'), 0, 'QAR', 9, 3);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-06-25', 'YYYY-MM-DD'), 4748.06, 'VUV', 6, 4);
+(TO_DATE('2021-06-25', 'YYYY-MM-DD'), 0, 'VUV', 6, 4);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-08-28', 'YYYY-MM-DD'), 2220.13, 'TZS', 10, 14);
+(TO_DATE('2021-08-28', 'YYYY-MM-DD'), 0, 'TZS', 10, 14);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-09-25', 'YYYY-MM-DD'), 7564.25, 'HKD', 15, 20);
+(TO_DATE('2022-09-25', 'YYYY-MM-DD'), 0, 'HKD', 15, 20);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-06-10', 'YYYY-MM-DD'), 1303.45, 'SRD', 2, 15);
+(TO_DATE('2022-06-10', 'YYYY-MM-DD'), 0, 'SRD', 2, 15);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-05-14', 'YYYY-MM-DD'), 8605.59, 'AFN', 2, 13);
+(TO_DATE('2021-05-14', 'YYYY-MM-DD'), 0, 'AFN', 2, 13);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-07-27', 'YYYY-MM-DD'), 11524.19, 'GIP', 17, 14);
+(TO_DATE('2021-07-27', 'YYYY-MM-DD'), 0, 'GIP', 17, 14);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-03-29', 'YYYY-MM-DD'), 11166.79, 'DZD', 8, 20);
+(TO_DATE('2022-03-29', 'YYYY-MM-DD'), 0, 'DZD', 8, 20);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-09-28', 'YYYY-MM-DD'), 8050.4, 'BIF', 11, 13);
+(TO_DATE('2022-09-28', 'YYYY-MM-DD'), 0, 'BIF', 11, 13);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-01-08', 'YYYY-MM-DD'), 4313.64, 'BMD', 15, 4);
+(TO_DATE('2022-01-08', 'YYYY-MM-DD'), 0, 'BMD', 15, 4);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-11-04', 'YYYY-MM-DD'), 19326.21, 'SBD', 17, 19);
+(TO_DATE('2022-11-04', 'YYYY-MM-DD'), 0, 'SBD', 17, 19);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-09-23', 'YYYY-MM-DD'), 4320.65, 'SSP', 6, 7);
+(TO_DATE('2021-09-23', 'YYYY-MM-DD'), 0, 'SSP', 6, 7);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-11-08', 'YYYY-MM-DD'), 11991.7, 'PKR', 16, 8);
+(TO_DATE('2021-11-08', 'YYYY-MM-DD'), 0, 'PKR', 16, 8);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-11-20', 'YYYY-MM-DD'), 13759.98, 'XAF', 17, 17);
+(TO_DATE('2022-11-20', 'YYYY-MM-DD'), 0, 'XAF', 17, 17);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-05-09', 'YYYY-MM-DD'), 17833.67, 'NOK', 2, 8);
+(TO_DATE('2021-05-09', 'YYYY-MM-DD'), 0, 'NOK', 2, 8);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-11-03', 'YYYY-MM-DD'), 16911.91, 'THB', 2, 16);
+(TO_DATE('2022-11-03', 'YYYY-MM-DD'), 0, 'THB', 2, 16);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2023-01-18', 'YYYY-MM-DD'), 3219.78, 'BDT', 17, 20);
+(TO_DATE('2023-01-18', 'YYYY-MM-DD'), 0, 'BDT', 17, 20);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-08-22', 'YYYY-MM-DD'), 2149.12, 'KYD', 8, 3);
+(TO_DATE('2022-08-22', 'YYYY-MM-DD'), 0, 'KYD', 8, 3);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-04-03', 'YYYY-MM-DD'), 9033.31, 'GYD', 15, 3);
+(TO_DATE('2022-04-03', 'YYYY-MM-DD'), 0, 'GYD', 15, 3);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-10-27', 'YYYY-MM-DD'), 15518.37, 'SOS', 1, 16);
+(TO_DATE('2021-10-27', 'YYYY-MM-DD'), 0, 'SOS', 1, 16);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-10-17', 'YYYY-MM-DD'), 12700.92, 'SDG', 14, 18);
+(TO_DATE('2022-10-17', 'YYYY-MM-DD'), 0, 'SDG', 14, 18);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-08-11', 'YYYY-MM-DD'), 14872.08, 'MXN', 2, 10);
+(TO_DATE('2021-08-11', 'YYYY-MM-DD'), 0, 'MXN', 2, 10);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-07-03', 'YYYY-MM-DD'), 1251.95, 'CLP', 12, 9);
+(TO_DATE('2021-07-03', 'YYYY-MM-DD'), 0, 'CLP', 12, 9);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-10-05', 'YYYY-MM-DD'), 12822.6, 'SHP', 19, 17);
+(TO_DATE('2022-10-05', 'YYYY-MM-DD'), 0, 'SHP', 19, 17);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-05-11', 'YYYY-MM-DD'), 10571.8, 'MWK', 5, 5);
+(TO_DATE('2022-05-11', 'YYYY-MM-DD'), 0, 'MWK', 5, 5);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-08-21', 'YYYY-MM-DD'), 12482.65, 'XAF', 2, 7);
+(TO_DATE('2022-08-21', 'YYYY-MM-DD'), 0, 'XAF', 2, 7);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-04-29', 'YYYY-MM-DD'), 4233.53, 'BHD', 9, 13);
+(TO_DATE('2021-04-29', 'YYYY-MM-DD'), 0, 'BHD', 9, 13);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-05-28', 'YYYY-MM-DD'), 2189.65, 'KYD', 14, 8);
+(TO_DATE('2021-05-28', 'YYYY-MM-DD'), 0, 'KYD', 14, 8);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-08-02', 'YYYY-MM-DD'), 7875.32, 'NZD', 3, 15);
+(TO_DATE('2022-08-02', 'YYYY-MM-DD'), 0, 'NZD', 3, 15);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2023-03-25', 'YYYY-MM-DD'), 17623.07, 'GIP', 20, 4);
+(TO_DATE('2023-03-25', 'YYYY-MM-DD'), 0, 'GIP', 20, 4);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2021-05-30', 'YYYY-MM-DD'), 12134.34, 'MDL', 13, 3);
+(TO_DATE('2021-05-30', 'YYYY-MM-DD'), 0, 'MDL', 13, 3);
 INSERT INTO Account (CreationDate, Balance, CurrencyCode, OwnerID, EmployeeID) VALUES
-(TO_DATE('2022-10-04', 'YYYY-MM-DD'), 2193.8, 'TJS', 20, 19);
+(TO_DATE('2022-10-04', 'YYYY-MM-DD'), 0, 'TJS', 20, 19);
 
 -- AuthorizedAccess table
 INSERT INTO AuthorizedAccess (ClientID, AccountID, EmployeeID, AuthorizedLimit) VALUES
@@ -344,514 +398,514 @@ INSERT INTO AuthorizedAccess (ClientID, AccountID, EmployeeID, AuthorizedLimit) 
 (3, 19, 5, 2919.92);
 
 -- Transaction table
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(1, 31, TO_TIMESTAMP('2024-09-11 04:10:22', 'YYYY-MM-DD HH24:MI:SS'), 1143.99, 1, 'Transfer', 'MC81358170054294A29622D2975');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(2, 31, TO_TIMESTAMP('2024-10-08 12:23:08', 'YYYY-MM-DD HH24:MI:SS'), 1546.99, 1, 'Transfer', 'VG42YJYA4300200834085003');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(3, 32, TO_TIMESTAMP('2023-08-25 06:12:35', 'YYYY-MM-DD HH24:MI:SS'), 1297.88, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(4, 5, TO_TIMESTAMP('2025-01-16 09:56:20', 'YYYY-MM-DD HH24:MI:SS'), 2405.49, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(5, 25, TO_TIMESTAMP('2023-06-11 01:58:08', 'YYYY-MM-DD HH24:MI:SS'), 1404.53, 0, 'Transfer', 'SE3200400393040090639761');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(6, 44, TO_TIMESTAMP('2023-06-09 04:07:16', 'YYYY-MM-DD HH24:MI:SS'), 1236.63, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(7, 6, TO_TIMESTAMP('2024-08-24 00:56:28', 'YYYY-MM-DD HH24:MI:SS'), 1256.31, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(8, 11, TO_TIMESTAMP('2023-10-02 04:44:10', 'YYYY-MM-DD HH24:MI:SS'), 870.52, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(9, 19, TO_TIMESTAMP('2023-07-06 07:26:16', 'YYYY-MM-DD HH24:MI:SS'), 2613.02, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(10, 49, TO_TIMESTAMP('2024-01-28 08:06:59', 'YYYY-MM-DD HH24:MI:SS'), 1080.84, 1, 'Transfer', 'SA668225931F138A3D2FH519');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(11, 29, TO_TIMESTAMP('2024-01-18 18:48:41', 'YYYY-MM-DD HH24:MI:SS'), 23.09, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(12, 41, TO_TIMESTAMP('2025-02-22 05:17:02', 'YYYY-MM-DD HH24:MI:SS'), 820.21, 1, 'Transfer', 'BH05ITLX42913K4316Z8I3');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(13, 40, TO_TIMESTAMP('2024-04-29 11:39:50', 'YYYY-MM-DD HH24:MI:SS'), 1459.63, 0, 'Transfer', 'JO59OCBH1974100201080030070890');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(14, 50, TO_TIMESTAMP('2024-03-07 22:34:08', 'YYYY-MM-DD HH24:MI:SS'), 852.25, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(15, 17, TO_TIMESTAMP('2024-07-15 01:02:12', 'YYYY-MM-DD HH24:MI:SS'), 2656.03, 1, 'Transfer', 'AE816691360407100150110');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(16, 45, TO_TIMESTAMP('2024-04-28 01:59:02', 'YYYY-MM-DD HH24:MI:SS'), 2502.58, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(17, 27, TO_TIMESTAMP('2025-03-20 03:42:11', 'YYYY-MM-DD HH24:MI:SS'), 90.82, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(18, 38, TO_TIMESTAMP('2024-08-09 09:30:56', 'YYYY-MM-DD HH24:MI:SS'), 2414.14, 1, 'Transfer', 'XK730728030847200485');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(19, 2, TO_TIMESTAMP('2025-01-22 21:10:00', 'YYYY-MM-DD HH24:MI:SS'), 2437.63, 0, 'Transfer', 'CH7085045V7LA3V29MD94');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(20, 48, TO_TIMESTAMP('2024-03-01 13:05:11', 'YYYY-MM-DD HH24:MI:SS'), 1229.86, 1, 'Transfer', 'MU23XEOM0003700850572659002TRH');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(21, 25, TO_TIMESTAMP('2024-03-20 14:20:53', 'YYYY-MM-DD HH24:MI:SS'), 646.81, 0, 'Transfer', 'RO61RLJK883283F41A400W77');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(22, 45, TO_TIMESTAMP('2025-02-16 01:45:40', 'YYYY-MM-DD HH24:MI:SS'), 2698.62, 0, 'Transfer', 'EE850938900006008303');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(23, 33, TO_TIMESTAMP('2023-07-04 11:52:57', 'YYYY-MM-DD HH24:MI:SS'), 2672.07, 0, 'Transfer', 'GB88FHMT63588283308059');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(24, 3, TO_TIMESTAMP('2023-10-25 00:24:31', 'YYYY-MM-DD HH24:MI:SS'), 2007.68, 0, 'Transfer', 'GI20XURB0L4378424885U56');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(25, 8, TO_TIMESTAMP('2025-02-15 04:56:38', 'YYYY-MM-DD HH24:MI:SS'), 953.67, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(26, 19, TO_TIMESTAMP('2024-08-22 04:45:11', 'YYYY-MM-DD HH24:MI:SS'), 2537.11, 1, 'Transfer', 'MT35HLKO4027987803581BN62803266');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(27, 28, TO_TIMESTAMP('2024-09-23 10:38:52', 'YYYY-MM-DD HH24:MI:SS'), 2090.8, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(28, 47, TO_TIMESTAMP('2024-07-31 01:48:54', 'YYYY-MM-DD HH24:MI:SS'), 2695.87, 0, 'Transfer', 'LU778997421900317Z50');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(29, 34, TO_TIMESTAMP('2024-11-18 13:39:47', 'YYYY-MM-DD HH24:MI:SS'), 1095.38, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(30, 44, TO_TIMESTAMP('2023-08-16 05:15:01', 'YYYY-MM-DD HH24:MI:SS'), 257.83, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(31, 3, TO_TIMESTAMP('2023-11-22 12:28:55', 'YYYY-MM-DD HH24:MI:SS'), 2998.68, 1, 'Transfer', 'BE59244041230097');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(32, 41, TO_TIMESTAMP('2025-03-28 18:25:52', 'YYYY-MM-DD HH24:MI:SS'), 1330.79, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(33, 12, TO_TIMESTAMP('2024-08-31 09:58:56', 'YYYY-MM-DD HH24:MI:SS'), 1078.73, 0, 'Transfer', 'NL62TSEP0065981815');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(34, 27, TO_TIMESTAMP('2023-11-14 17:12:29', 'YYYY-MM-DD HH24:MI:SS'), 1218.55, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(35, 8, TO_TIMESTAMP('2024-03-22 12:58:38', 'YYYY-MM-DD HH24:MI:SS'), 2031.62, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(36, 14, TO_TIMESTAMP('2024-02-28 05:23:51', 'YYYY-MM-DD HH24:MI:SS'), 2129.99, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(37, 45, TO_TIMESTAMP('2023-06-17 04:42:59', 'YYYY-MM-DD HH24:MI:SS'), 478.65, 0, 'Transfer', 'DE32506030020016058789');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(38, 15, TO_TIMESTAMP('2024-11-23 05:34:33', 'YYYY-MM-DD HH24:MI:SS'), 1810.79, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(39, 4, TO_TIMESTAMP('2025-01-28 08:05:18', 'YYYY-MM-DD HH24:MI:SS'), 1813.95, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(40, 27, TO_TIMESTAMP('2023-07-17 06:49:21', 'YYYY-MM-DD HH24:MI:SS'), 2717.8, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(41, 25, TO_TIMESTAMP('2024-05-19 02:25:15', 'YYYY-MM-DD HH24:MI:SS'), 2024.63, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(42, 12, TO_TIMESTAMP('2023-04-14 17:25:47', 'YYYY-MM-DD HH24:MI:SS'), 2685.7, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(43, 22, TO_TIMESTAMP('2023-04-26 22:59:43', 'YYYY-MM-DD HH24:MI:SS'), 1115.42, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(44, 1, TO_TIMESTAMP('2024-01-13 21:27:33', 'YYYY-MM-DD HH24:MI:SS'), 239.95, 1, 'Transfer', 'KZ144400J55574326042');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(45, 15, TO_TIMESTAMP('2023-11-21 14:45:56', 'YYYY-MM-DD HH24:MI:SS'), 866.57, 1, 'Transfer', 'DE76560080917298483465');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(46, 21, TO_TIMESTAMP('2023-05-10 02:10:05', 'YYYY-MM-DD HH24:MI:SS'), 2231.52, 0, 'Transfer', 'NO7777344902719');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(47, 27, TO_TIMESTAMP('2023-09-11 09:25:12', 'YYYY-MM-DD HH24:MI:SS'), 1079.66, 0, 'Transfer', 'EE102203450441323020');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(48, 40, TO_TIMESTAMP('2023-08-19 06:16:39', 'YYYY-MM-DD HH24:MI:SS'), 2825.63, 1, 'Transfer', 'AZ41IIZX50702008402600480080');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(49, 23, TO_TIMESTAMP('2025-01-23 10:59:44', 'YYYY-MM-DD HH24:MI:SS'), 1308.79, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(50, 28, TO_TIMESTAMP('2023-12-15 07:40:05', 'YYYY-MM-DD HH24:MI:SS'), 2971.85, 1, 'Transfer', 'RS24993808400750063721');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(51, 29, TO_TIMESTAMP('2024-10-11 07:57:10', 'YYYY-MM-DD HH24:MI:SS'), 906.34, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(52, 8, TO_TIMESTAMP('2024-02-20 04:30:27', 'YYYY-MM-DD HH24:MI:SS'), 1414.39, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(53, 20, TO_TIMESTAMP('2025-02-26 19:29:37', 'YYYY-MM-DD HH24:MI:SS'), 1829.53, 1, 'Transfer', 'TR951003572581364081076614');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(54, 26, TO_TIMESTAMP('2023-04-15 06:56:03', 'YYYY-MM-DD HH24:MI:SS'), 2397.16, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(55, 18, TO_TIMESTAMP('2024-07-24 17:01:46', 'YYYY-MM-DD HH24:MI:SS'), 570.24, 0, 'Transfer', 'LB59003542528E683695789635D5');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(56, 3, TO_TIMESTAMP('2024-10-09 00:31:50', 'YYYY-MM-DD HH24:MI:SS'), 2269.94, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(57, 24, TO_TIMESTAMP('2023-08-02 12:32:16', 'YYYY-MM-DD HH24:MI:SS'), 2358.07, 1, 'Transfer', 'MK93036P71960809668');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(58, 45, TO_TIMESTAMP('2025-02-14 09:33:09', 'YYYY-MM-DD HH24:MI:SS'), 421.47, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(59, 17, TO_TIMESTAMP('2023-05-01 09:03:23', 'YYYY-MM-DD HH24:MI:SS'), 2728.18, 1, 'Transfer', 'ME88002700770072001031');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(60, 49, TO_TIMESTAMP('2024-12-20 12:17:29', 'YYYY-MM-DD HH24:MI:SS'), 2231.09, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(61, 41, TO_TIMESTAMP('2025-03-07 10:38:47', 'YYYY-MM-DD HH24:MI:SS'), 2894.68, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(62, 31, TO_TIMESTAMP('2024-03-28 11:51:46', 'YYYY-MM-DD HH24:MI:SS'), 2811.01, 1, 'Transfer', 'PL59180400751801808360406569');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(63, 20, TO_TIMESTAMP('2023-10-27 09:11:15', 'YYYY-MM-DD HH24:MI:SS'), 2768.03, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(64, 31, TO_TIMESTAMP('2024-07-19 13:55:40', 'YYYY-MM-DD HH24:MI:SS'), 603.58, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(65, 28, TO_TIMESTAMP('2023-07-22 15:24:00', 'YYYY-MM-DD HH24:MI:SS'), 511.07, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(66, 12, TO_TIMESTAMP('2024-10-25 05:08:13', 'YYYY-MM-DD HH24:MI:SS'), 2644.17, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(67, 13, TO_TIMESTAMP('2023-12-23 16:50:25', 'YYYY-MM-DD HH24:MI:SS'), 471.55, 0, 'Transfer', 'GB35VEPX00100321005069');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(68, 45, TO_TIMESTAMP('2023-08-25 19:03:24', 'YYYY-MM-DD HH24:MI:SS'), 1568.73, 0, 'Transfer', 'GR120100248J87F303Z5I931U09');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(69, 44, TO_TIMESTAMP('2024-03-19 09:43:35', 'YYYY-MM-DD HH24:MI:SS'), 920.56, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(70, 40, TO_TIMESTAMP('2023-09-23 19:36:54', 'YYYY-MM-DD HH24:MI:SS'), 1470.47, 1, 'Transfer', 'CR11151659670080014474');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(71, 49, TO_TIMESTAMP('2023-10-08 14:34:04', 'YYYY-MM-DD HH24:MI:SS'), 415.73, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(72, 44, TO_TIMESTAMP('2023-08-12 18:26:49', 'YYYY-MM-DD HH24:MI:SS'), 1272.88, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(73, 16, TO_TIMESTAMP('2023-06-04 12:25:39', 'YYYY-MM-DD HH24:MI:SS'), 1177.2, 0, 'Transfer', 'AZ16CCQT13020086050730810933');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(74, 31, TO_TIMESTAMP('2023-12-01 09:31:51', 'YYYY-MM-DD HH24:MI:SS'), 1950.89, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(75, 28, TO_TIMESTAMP('2024-06-23 17:23:23', 'YYYY-MM-DD HH24:MI:SS'), 2186.48, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(76, 37, TO_TIMESTAMP('2023-06-10 16:09:06', 'YYYY-MM-DD HH24:MI:SS'), 2594.41, 1, 'Transfer', 'PK52TCQZ0530060020082850');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(77, 36, TO_TIMESTAMP('2025-03-02 20:12:27', 'YYYY-MM-DD HH24:MI:SS'), 1649.34, 1, 'Transfer', 'FO7215339316006004');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(78, 31, TO_TIMESTAMP('2024-03-19 03:02:00', 'YYYY-MM-DD HH24:MI:SS'), 1367.54, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(79, 4, TO_TIMESTAMP('2024-02-27 01:38:01', 'YYYY-MM-DD HH24:MI:SS'), 344.94, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(80, 22, TO_TIMESTAMP('2023-08-01 10:37:23', 'YYYY-MM-DD HH24:MI:SS'), 1167.73, 1, 'Transfer', 'JO51FGZG0251407370075805455003');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(81, 16, TO_TIMESTAMP('2024-11-28 09:59:44', 'YYYY-MM-DD HH24:MI:SS'), 2073.1, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(82, 28, TO_TIMESTAMP('2024-04-18 03:23:31', 'YYYY-MM-DD HH24:MI:SS'), 2412.87, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(83, 30, TO_TIMESTAMP('2023-09-08 15:03:01', 'YYYY-MM-DD HH24:MI:SS'), 1652.14, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(84, 39, TO_TIMESTAMP('2023-10-24 07:51:08', 'YYYY-MM-DD HH24:MI:SS'), 2329.62, 0, 'Transfer', 'HR3830061512801635925');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(85, 5, TO_TIMESTAMP('2023-12-17 19:49:20', 'YYYY-MM-DD HH24:MI:SS'), 113.33, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(86, 47, TO_TIMESTAMP('2023-08-12 04:13:29', 'YYYY-MM-DD HH24:MI:SS'), 1803.64, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(87, 44, TO_TIMESTAMP('2023-12-01 04:57:03', 'YYYY-MM-DD HH24:MI:SS'), 2636.96, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(88, 36, TO_TIMESTAMP('2025-02-18 07:11:35', 'YYYY-MM-DD HH24:MI:SS'), 2160.6, 1, 'Transfer', 'ES4866060061140190880616');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(89, 5, TO_TIMESTAMP('2024-10-13 12:51:52', 'YYYY-MM-DD HH24:MI:SS'), 1864.8, 0, 'Transfer', 'DO76AQJS00800657002997001138');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(90, 33, TO_TIMESTAMP('2023-10-08 22:09:22', 'YYYY-MM-DD HH24:MI:SS'), 827.27, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(91, 28, TO_TIMESTAMP('2024-03-01 01:13:48', 'YYYY-MM-DD HH24:MI:SS'), 618.91, 1, 'Transfer', 'IS540089477003390090902514');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(92, 18, TO_TIMESTAMP('2023-11-10 17:26:20', 'YYYY-MM-DD HH24:MI:SS'), 1947.54, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(93, 33, TO_TIMESTAMP('2024-05-21 02:02:07', 'YYYY-MM-DD HH24:MI:SS'), 887.24, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(94, 19, TO_TIMESTAMP('2024-11-02 13:22:44', 'YYYY-MM-DD HH24:MI:SS'), 2719.22, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(95, 22, TO_TIMESTAMP('2024-10-06 07:17:18', 'YYYY-MM-DD HH24:MI:SS'), 1898.33, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(96, 11, TO_TIMESTAMP('2024-01-18 12:04:08', 'YYYY-MM-DD HH24:MI:SS'), 1796.53, 1, 'Transfer', 'AZ61RYJC76899167759002300444');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(97, 46, TO_TIMESTAMP('2023-07-12 11:58:16', 'YYYY-MM-DD HH24:MI:SS'), 1187.03, 0, 'Transfer', 'AE304102454190842104192');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(98, 31, TO_TIMESTAMP('2024-01-28 10:23:41', 'YYYY-MM-DD HH24:MI:SS'), 1826.97, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(99, 47, TO_TIMESTAMP('2024-02-06 05:47:39', 'YYYY-MM-DD HH24:MI:SS'), 586.67, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(100, 48, TO_TIMESTAMP('2025-01-05 01:18:42', 'YYYY-MM-DD HH24:MI:SS'), 109.52, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(101, 36, TO_TIMESTAMP('2024-04-08 14:02:17', 'YYYY-MM-DD HH24:MI:SS'), 93.4, 1, 'Transfer', 'AD23007588989IB75196H6W5');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(102, 21, TO_TIMESTAMP('2023-11-23 22:01:47', 'YYYY-MM-DD HH24:MI:SS'), 345.35, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(103, 9, TO_TIMESTAMP('2025-04-03 18:15:50', 'YYYY-MM-DD HH24:MI:SS'), 2096.8, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(104, 17, TO_TIMESTAMP('2024-11-30 11:18:26', 'YYYY-MM-DD HH24:MI:SS'), 2971.76, 0, 'Transfer', 'IE38864908304120037001');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(105, 42, TO_TIMESTAMP('2023-05-31 12:09:43', 'YYYY-MM-DD HH24:MI:SS'), 1786.92, 0, 'Transfer', 'SE3658300203201632040308');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(106, 4, TO_TIMESTAMP('2024-06-05 17:49:48', 'YYYY-MM-DD HH24:MI:SS'), 1223.87, 1, 'Transfer', 'RS70051800999859036396');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(107, 5, TO_TIMESTAMP('2024-06-08 14:27:51', 'YYYY-MM-DD HH24:MI:SS'), 326.44, 0, 'Transfer', 'LB2701628SYC13738983B1981526');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(108, 41, TO_TIMESTAMP('2024-10-05 12:07:00', 'YYYY-MM-DD HH24:MI:SS'), 1795.84, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(109, 33, TO_TIMESTAMP('2023-05-06 12:51:52', 'YYYY-MM-DD HH24:MI:SS'), 1353.04, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(110, 12, TO_TIMESTAMP('2023-10-17 05:04:33', 'YYYY-MM-DD HH24:MI:SS'), 2544.85, 0, 'Transfer', 'GL3908030840027071');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(111, 2, TO_TIMESTAMP('2024-02-19 09:47:04', 'YYYY-MM-DD HH24:MI:SS'), 2460.16, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(112, 47, TO_TIMESTAMP('2024-07-01 23:23:04', 'YYYY-MM-DD HH24:MI:SS'), 941.17, 1, 'Transfer', 'QA61ZOJD7P4MD7D1M5754320F74L9');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(113, 21, TO_TIMESTAMP('2024-08-17 14:14:30', 'YYYY-MM-DD HH24:MI:SS'), 2671.19, 0, 'Transfer', 'TN5640015030165704220349');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(114, 28, TO_TIMESTAMP('2023-11-05 09:48:01', 'YYYY-MM-DD HH24:MI:SS'), 528.3, 0, 'Transfer', 'GI05SKHX4V230149C48V813');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(115, 1, TO_TIMESTAMP('2023-07-04 22:50:52', 'YYYY-MM-DD HH24:MI:SS'), 565.79, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(116, 28, TO_TIMESTAMP('2024-02-21 10:38:27', 'YYYY-MM-DD HH24:MI:SS'), 1464.08, 1, 'Transfer', 'IS780300139360250700676505');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(117, 43, TO_TIMESTAMP('2024-08-12 11:53:52', 'YYYY-MM-DD HH24:MI:SS'), 2100.98, 0, 'Transfer', 'PK16ZAKJ0093100061900579');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(118, 40, TO_TIMESTAMP('2024-02-27 22:32:03', 'YYYY-MM-DD HH24:MI:SS'), 1779.49, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(119, 3, TO_TIMESTAMP('2024-12-05 05:53:13', 'YYYY-MM-DD HH24:MI:SS'), 1017.63, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(120, 2, TO_TIMESTAMP('2023-11-30 03:59:24', 'YYYY-MM-DD HH24:MI:SS'), 1125.07, 1, 'Transfer', 'IL857096480140014300439');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(121, 26, TO_TIMESTAMP('2025-01-10 09:03:36', 'YYYY-MM-DD HH24:MI:SS'), 1158.34, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(122, 50, TO_TIMESTAMP('2024-09-06 16:56:17', 'YYYY-MM-DD HH24:MI:SS'), 1052.27, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(123, 7, TO_TIMESTAMP('2024-10-18 22:19:19', 'YYYY-MM-DD HH24:MI:SS'), 623.93, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(124, 7, TO_TIMESTAMP('2023-12-26 00:17:28', 'YYYY-MM-DD HH24:MI:SS'), 2874.12, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(125, 40, TO_TIMESTAMP('2024-03-19 01:37:14', 'YYYY-MM-DD HH24:MI:SS'), 2965.81, 0, 'Transfer', 'GR830740308A47F0E639NK8M369');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(126, 46, TO_TIMESTAMP('2024-03-23 01:06:27', 'YYYY-MM-DD HH24:MI:SS'), 2059.29, 0, 'Transfer', 'GT268016723T6Y10178684317V7Z');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(127, 32, TO_TIMESTAMP('2024-01-23 08:51:57', 'YYYY-MM-DD HH24:MI:SS'), 1959.73, 0, 'Transfer', 'XK360860073674301647');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(128, 40, TO_TIMESTAMP('2025-02-08 21:50:27', 'YYYY-MM-DD HH24:MI:SS'), 2184.59, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(129, 32, TO_TIMESTAMP('2025-02-22 10:15:20', 'YYYY-MM-DD HH24:MI:SS'), 508.85, 1, 'Transfer', 'AL36057663820810914D529R2814');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(130, 33, TO_TIMESTAMP('2023-11-03 16:09:24', 'YYYY-MM-DD HH24:MI:SS'), 532.99, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(131, 11, TO_TIMESTAMP('2023-08-07 15:50:36', 'YYYY-MM-DD HH24:MI:SS'), 2708.52, 0, 'Transfer', 'PS378120552057718034768668038');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(132, 28, TO_TIMESTAMP('2023-10-23 22:41:53', 'YYYY-MM-DD HH24:MI:SS'), 1451.56, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(133, 34, TO_TIMESTAMP('2025-02-06 20:27:28', 'YYYY-MM-DD HH24:MI:SS'), 1125.31, 1, 'Transfer', 'PK82HFWX6006456400540863');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(134, 44, TO_TIMESTAMP('2024-04-29 11:47:33', 'YYYY-MM-DD HH24:MI:SS'), 12.57, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(135, 44, TO_TIMESTAMP('2024-05-22 22:53:03', 'YYYY-MM-DD HH24:MI:SS'), 373.6, 0, 'Transfer', 'GR4200100552SM5264436F22214');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(136, 25, TO_TIMESTAMP('2024-05-18 07:30:27', 'YYYY-MM-DD HH24:MI:SS'), 1904.87, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(137, 36, TO_TIMESTAMP('2023-11-10 06:31:12', 'YYYY-MM-DD HH24:MI:SS'), 1182.23, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(138, 42, TO_TIMESTAMP('2023-10-21 17:41:34', 'YYYY-MM-DD HH24:MI:SS'), 2744.1, 0, 'Transfer', 'XK699429073090060061');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(139, 26, TO_TIMESTAMP('2024-11-21 08:36:12', 'YYYY-MM-DD HH24:MI:SS'), 980.56, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(140, 27, TO_TIMESTAMP('2024-03-12 08:49:07', 'YYYY-MM-DD HH24:MI:SS'), 2045.48, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(141, 45, TO_TIMESTAMP('2023-04-27 11:17:44', 'YYYY-MM-DD HH24:MI:SS'), 1555.96, 0, 'Transfer', 'MT64QFLM0042860M4282N5321E1363U');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(142, 25, TO_TIMESTAMP('2024-03-13 12:10:00', 'YYYY-MM-DD HH24:MI:SS'), 336.57, 0, 'Transfer', 'MU19TIGX0097937800905642001GUF');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(143, 11, TO_TIMESTAMP('2024-09-29 04:25:08', 'YYYY-MM-DD HH24:MI:SS'), 2309.73, 1, 'Transfer', 'AD64178500943N17D845Y93V');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(144, 25, TO_TIMESTAMP('2024-10-06 14:48:59', 'YYYY-MM-DD HH24:MI:SS'), 2453.52, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(145, 45, TO_TIMESTAMP('2023-09-30 22:48:27', 'YYYY-MM-DD HH24:MI:SS'), 1926.81, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(146, 39, TO_TIMESTAMP('2024-12-23 14:02:04', 'YYYY-MM-DD HH24:MI:SS'), 1573.94, 0, 'Transfer', 'HR5730440670510373611');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(147, 11, TO_TIMESTAMP('2025-03-21 12:57:06', 'YYYY-MM-DD HH24:MI:SS'), 303.9, 0, 'Transfer', 'SK2850320100700869004556');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(148, 8, TO_TIMESTAMP('2023-09-10 09:20:46', 'YYYY-MM-DD HH24:MI:SS'), 286.28, 1, 'Transfer', 'JO71VDSP9001170920092782002647');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(149, 47, TO_TIMESTAMP('2025-02-07 10:11:16', 'YYYY-MM-DD HH24:MI:SS'), 799.52, 1, 'Transfer', 'AL474009306255179N386268554L');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(150, 14, TO_TIMESTAMP('2023-04-14 16:35:35', 'YYYY-MM-DD HH24:MI:SS'), 1302.1, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(151, 41, TO_TIMESTAMP('2023-09-19 01:49:27', 'YYYY-MM-DD HH24:MI:SS'), 1387.5, 0, 'Transfer', 'IL440999910020603500897');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(152, 26, TO_TIMESTAMP('2023-08-22 01:37:06', 'YYYY-MM-DD HH24:MI:SS'), 1008.2, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(153, 3, TO_TIMESTAMP('2023-08-04 01:55:23', 'YYYY-MM-DD HH24:MI:SS'), 2572.42, 1, 'Transfer', 'NO2100573808691');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(154, 43, TO_TIMESTAMP('2024-08-22 11:26:12', 'YYYY-MM-DD HH24:MI:SS'), 1092.97, 1, 'Transfer', 'GI11OTFID0852V198C73056');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(155, 36, TO_TIMESTAMP('2023-05-26 11:23:06', 'YYYY-MM-DD HH24:MI:SS'), 974.93, 1, 'Transfer', 'BR2009016080850212004800595F4');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(156, 32, TO_TIMESTAMP('2023-08-14 18:20:48', 'YYYY-MM-DD HH24:MI:SS'), 2828.19, 0, 'Transfer', 'MT86DPWG006293K9791B2349101555X');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(157, 17, TO_TIMESTAMP('2024-06-17 01:38:12', 'YYYY-MM-DD HH24:MI:SS'), 2389.89, 0, 'Transfer', 'HR5227100748007933422');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(158, 39, TO_TIMESTAMP('2023-06-12 12:57:31', 'YYYY-MM-DD HH24:MI:SS'), 424.59, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(159, 1, TO_TIMESTAMP('2024-01-16 05:33:18', 'YYYY-MM-DD HH24:MI:SS'), 1163.37, 1, 'Transfer', 'MT65GDZE206827Y3198614697X40596');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(160, 15, TO_TIMESTAMP('2024-08-13 05:35:39', 'YYYY-MM-DD HH24:MI:SS'), 1346.9, 1, 'Transfer', 'FR9701005457429E991832ESV81');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(161, 3, TO_TIMESTAMP('2024-07-17 19:11:41', 'YYYY-MM-DD HH24:MI:SS'), 196.31, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(162, 14, TO_TIMESTAMP('2024-10-28 16:19:47', 'YYYY-MM-DD HH24:MI:SS'), 1416.57, 0, 'Transfer', 'GE97NH0104500000800816');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(163, 14, TO_TIMESTAMP('2024-07-24 14:58:38', 'YYYY-MM-DD HH24:MI:SS'), 474.24, 0, 'Transfer', 'MU05QBOV3355631300706490035CAI');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(164, 25, TO_TIMESTAMP('2024-05-21 00:41:37', 'YYYY-MM-DD HH24:MI:SS'), 312.47, 0, 'Transfer', 'GI31YWLKP17Y484299W3624');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(165, 40, TO_TIMESTAMP('2023-05-14 11:24:06', 'YYYY-MM-DD HH24:MI:SS'), 1307.94, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(166, 8, TO_TIMESTAMP('2024-11-16 04:16:47', 'YYYY-MM-DD HH24:MI:SS'), 2373.26, 0, 'Transfer', 'SK2001007807058261453907');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(167, 15, TO_TIMESTAMP('2024-03-17 01:52:12', 'YYYY-MM-DD HH24:MI:SS'), 2282.88, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(168, 21, TO_TIMESTAMP('2025-01-26 00:08:18', 'YYYY-MM-DD HH24:MI:SS'), 1325.97, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(169, 50, TO_TIMESTAMP('2024-02-02 19:50:21', 'YYYY-MM-DD HH24:MI:SS'), 2099.92, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(170, 23, TO_TIMESTAMP('2024-06-02 09:06:23', 'YYYY-MM-DD HH24:MI:SS'), 392.23, 1, 'Transfer', 'GL9802990155496097');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(171, 9, TO_TIMESTAMP('2025-02-16 19:47:06', 'YYYY-MM-DD HH24:MI:SS'), 2449.47, 1, 'Transfer', 'MC2135822179748508Z21A76633');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(172, 46, TO_TIMESTAMP('2023-05-18 20:13:30', 'YYYY-MM-DD HH24:MI:SS'), 58.62, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(173, 16, TO_TIMESTAMP('2025-03-08 14:24:28', 'YYYY-MM-DD HH24:MI:SS'), 249.55, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(174, 39, TO_TIMESTAMP('2025-02-16 13:50:32', 'YYYY-MM-DD HH24:MI:SS'), 1471.21, 1, 'Transfer', 'GL3600140078009342');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(175, 19, TO_TIMESTAMP('2023-10-13 13:37:19', 'YYYY-MM-DD HH24:MI:SS'), 2217.67, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(176, 46, TO_TIMESTAMP('2023-08-08 17:40:23', 'YYYY-MM-DD HH24:MI:SS'), 615.75, 0, 'Transfer', 'SM98R9043005172004359Z9LC4U');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(177, 45, TO_TIMESTAMP('2024-06-26 23:34:09', 'YYYY-MM-DD HH24:MI:SS'), 754.95, 0, 'Transfer', 'LT210073800201007283');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(178, 42, TO_TIMESTAMP('2023-12-24 20:00:30', 'YYYY-MM-DD HH24:MI:SS'), 672.19, 1, 'Transfer', 'AL266000396937586763388972QM');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(179, 48, TO_TIMESTAMP('2025-02-19 12:14:23', 'YYYY-MM-DD HH24:MI:SS'), 2866.91, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(180, 49, TO_TIMESTAMP('2023-08-23 05:03:40', 'YYYY-MM-DD HH24:MI:SS'), 2958.11, 1, 'Transfer', 'CZ9803005092010950013099');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(181, 6, TO_TIMESTAMP('2024-03-22 09:27:29', 'YYYY-MM-DD HH24:MI:SS'), 725.36, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(182, 39, TO_TIMESTAMP('2023-11-28 20:02:09', 'YYYY-MM-DD HH24:MI:SS'), 2237.99, 0, 'Transfer', 'GI24NAQHQFP7075341KN630');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(183, 25, TO_TIMESTAMP('2024-02-26 22:09:02', 'YYYY-MM-DD HH24:MI:SS'), 1841.47, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(184, 42, TO_TIMESTAMP('2024-07-24 04:14:01', 'YYYY-MM-DD HH24:MI:SS'), 2627.67, 0, 'Transfer', 'GE37JO6008080023560629');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(185, 8, TO_TIMESTAMP('2023-04-18 08:52:21', 'YYYY-MM-DD HH24:MI:SS'), 373.4, 0, 'Transfer', 'MT68UWJW06006O1PQ40V000910820F3');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(186, 22, TO_TIMESTAMP('2025-01-17 10:54:01', 'YYYY-MM-DD HH24:MI:SS'), 2810.41, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(187, 18, TO_TIMESTAMP('2024-11-19 14:44:16', 'YYYY-MM-DD HH24:MI:SS'), 1873.1, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(188, 14, TO_TIMESTAMP('2024-12-25 04:38:39', 'YYYY-MM-DD HH24:MI:SS'), 1970.98, 1, 'Transfer', 'MD20874601895386127J1553');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(189, 44, TO_TIMESTAMP('2025-02-16 21:28:11', 'YYYY-MM-DD HH24:MI:SS'), 1252.47, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(190, 18, TO_TIMESTAMP('2024-08-30 16:58:04', 'YYYY-MM-DD HH24:MI:SS'), 2736.76, 1, 'Transfer', 'DE38220189401007173304');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(191, 4, TO_TIMESTAMP('2023-10-04 08:10:11', 'YYYY-MM-DD HH24:MI:SS'), 46.96, 1, 'Transfer', 'CY59300402827Y671854984Q66Q7');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(192, 12, TO_TIMESTAMP('2024-03-25 23:52:07', 'YYYY-MM-DD HH24:MI:SS'), 507.62, 0, 'Transfer', 'SK9800148886593700600628');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(193, 17, TO_TIMESTAMP('2024-02-19 22:33:15', 'YYYY-MM-DD HH24:MI:SS'), 60.36, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(194, 2, TO_TIMESTAMP('2024-05-26 06:06:21', 'YYYY-MM-DD HH24:MI:SS'), 2687.33, 0, 'Transfer', 'BE13690100530097');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(195, 27, TO_TIMESTAMP('2024-10-11 07:07:07', 'YYYY-MM-DD HH24:MI:SS'), 1377.12, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(196, 8, TO_TIMESTAMP('2024-01-29 14:07:53', 'YYYY-MM-DD HH24:MI:SS'), 2829.23, 0, 'Transfer', 'RO75LWHY27249O24B8D0H94I');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(197, 34, TO_TIMESTAMP('2024-06-12 13:23:38', 'YYYY-MM-DD HH24:MI:SS'), 1356.84, 0, 'Transfer', 'DK5650192002277063');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(198, 29, TO_TIMESTAMP('2023-05-24 14:05:50', 'YYYY-MM-DD HH24:MI:SS'), 1853.66, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(199, 44, TO_TIMESTAMP('2024-06-29 06:22:20', 'YYYY-MM-DD HH24:MI:SS'), 1053.75, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(200, 11, TO_TIMESTAMP('2023-09-07 15:42:07', 'YYYY-MM-DD HH24:MI:SS'), 152.25, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(201, 15, TO_TIMESTAMP('2023-11-10 01:17:42', 'YYYY-MM-DD HH24:MI:SS'), 2596.46, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(202, 39, TO_TIMESTAMP('2023-04-21 01:17:48', 'YYYY-MM-DD HH24:MI:SS'), 501.24, 0, 'Transfer', 'GT4010K1764244R6372SR73122X2');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(203, 21, TO_TIMESTAMP('2025-01-31 02:17:51', 'YYYY-MM-DD HH24:MI:SS'), 2627.63, 1, 'Transfer', 'MK94278551999291326');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(204, 37, TO_TIMESTAMP('2023-05-06 06:26:17', 'YYYY-MM-DD HH24:MI:SS'), 1725.06, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(205, 34, TO_TIMESTAMP('2023-07-30 20:20:03', 'YYYY-MM-DD HH24:MI:SS'), 2022.52, 1, 'Transfer', 'DK4467970039700513');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(206, 16, TO_TIMESTAMP('2024-10-29 00:01:29', 'YYYY-MM-DD HH24:MI:SS'), 1542.99, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(207, 6, TO_TIMESTAMP('2024-02-03 17:36:50', 'YYYY-MM-DD HH24:MI:SS'), 2320.82, 0, 'Transfer', 'AD2805551004458733H4186Y');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(208, 4, TO_TIMESTAMP('2023-06-03 09:25:43', 'YYYY-MM-DD HH24:MI:SS'), 595.49, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(209, 14, TO_TIMESTAMP('2024-06-09 18:40:52', 'YYYY-MM-DD HH24:MI:SS'), 25.28, 0, 'Transfer', 'MR0700600803988001001250955');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(210, 11, TO_TIMESTAMP('2023-10-15 10:46:05', 'YYYY-MM-DD HH24:MI:SS'), 1070.99, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(211, 38, TO_TIMESTAMP('2024-03-07 06:12:41', 'YYYY-MM-DD HH24:MI:SS'), 2508.57, 0, 'Transfer', 'AZ81SJUD80977320057420086750');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(212, 29, TO_TIMESTAMP('2025-02-21 22:54:39', 'YYYY-MM-DD HH24:MI:SS'), 1860.99, 0, 'Transfer', 'BE83674203890059');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(213, 17, TO_TIMESTAMP('2023-06-04 10:48:24', 'YYYY-MM-DD HH24:MI:SS'), 2894.51, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(214, 1, TO_TIMESTAMP('2024-12-29 18:41:40', 'YYYY-MM-DD HH24:MI:SS'), 612.31, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(215, 47, TO_TIMESTAMP('2024-08-22 00:08:04', 'YYYY-MM-DD HH24:MI:SS'), 950.77, 1, 'Transfer', 'JO93WCTO4873500497085603889279');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(216, 13, TO_TIMESTAMP('2024-01-26 15:37:39', 'YYYY-MM-DD HH24:MI:SS'), 577.28, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(217, 36, TO_TIMESTAMP('2023-11-04 06:59:21', 'YYYY-MM-DD HH24:MI:SS'), 2804.57, 0, 'Transfer', 'ES5049841006250016673534');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(218, 5, TO_TIMESTAMP('2025-02-14 22:11:15', 'YYYY-MM-DD HH24:MI:SS'), 2174.02, 0, 'Transfer', 'BG15CMZM44541257636F11');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(219, 38, TO_TIMESTAMP('2024-07-06 13:42:16', 'YYYY-MM-DD HH24:MI:SS'), 264.99, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(220, 22, TO_TIMESTAMP('2023-07-10 13:57:25', 'YYYY-MM-DD HH24:MI:SS'), 1910.5, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(221, 37, TO_TIMESTAMP('2023-09-21 10:33:05', 'YYYY-MM-DD HH24:MI:SS'), 1621.29, 0, 'Transfer', 'KW69SLPK5C6W790R86801Y12229881');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(222, 30, TO_TIMESTAMP('2024-09-01 11:14:45', 'YYYY-MM-DD HH24:MI:SS'), 2642.02, 1, 'Transfer', 'BA282904784686611914');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(223, 4, TO_TIMESTAMP('2023-08-08 09:26:35', 'YYYY-MM-DD HH24:MI:SS'), 2560.57, 1, 'Transfer', 'BR0670480030040290500600910I4');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(224, 38, TO_TIMESTAMP('2024-06-13 10:54:06', 'YYYY-MM-DD HH24:MI:SS'), 1854.01, 1, 'Transfer', 'SK7551509087814812933553');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(225, 34, TO_TIMESTAMP('2024-04-03 11:54:22', 'YYYY-MM-DD HH24:MI:SS'), 2916.3, 1, 'Transfer', 'BH24RXQGB4J70452098364');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(226, 42, TO_TIMESTAMP('2023-09-20 01:12:28', 'YYYY-MM-DD HH24:MI:SS'), 2672.61, 1, 'Transfer', 'LB4548151L23S7093Q5O49487782');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(227, 9, TO_TIMESTAMP('2024-04-09 12:16:26', 'YYYY-MM-DD HH24:MI:SS'), 101.88, 1, 'Transfer', 'RS56077700870088940621');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(228, 9, TO_TIMESTAMP('2023-05-29 06:20:51', 'YYYY-MM-DD HH24:MI:SS'), 1160.76, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(229, 24, TO_TIMESTAMP('2024-01-30 05:02:57', 'YYYY-MM-DD HH24:MI:SS'), 1176.61, 1, 'Transfer', 'LU90278142988YL85371');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(230, 33, TO_TIMESTAMP('2025-02-01 21:47:05', 'YYYY-MM-DD HH24:MI:SS'), 2110.28, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(231, 6, TO_TIMESTAMP('2024-01-20 06:50:25', 'YYYY-MM-DD HH24:MI:SS'), 663.64, 1, 'Transfer', 'AL5543415004644250N530IX28M8');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(232, 24, TO_TIMESTAMP('2025-03-24 21:26:22', 'YYYY-MM-DD HH24:MI:SS'), 554.34, 1, 'Transfer', 'FO8500927704010584');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(233, 29, TO_TIMESTAMP('2024-06-05 20:43:14', 'YYYY-MM-DD HH24:MI:SS'), 2316.86, 1, 'Transfer', 'SA36723E03Z06K0JK3881R1B');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(234, 11, TO_TIMESTAMP('2023-08-28 23:36:50', 'YYYY-MM-DD HH24:MI:SS'), 748.64, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(235, 22, TO_TIMESTAMP('2023-07-11 06:02:43', 'YYYY-MM-DD HH24:MI:SS'), 2315.11, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(236, 48, TO_TIMESTAMP('2023-09-10 06:07:48', 'YYYY-MM-DD HH24:MI:SS'), 63.28, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(237, 3, TO_TIMESTAMP('2024-12-19 23:49:53', 'YYYY-MM-DD HH24:MI:SS'), 1700.23, 1, 'Transfer', 'AL24004909027Z246SJ59093Y114');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(238, 36, TO_TIMESTAMP('2023-07-03 20:55:17', 'YYYY-MM-DD HH24:MI:SS'), 48.74, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(239, 38, TO_TIMESTAMP('2024-01-25 00:52:59', 'YYYY-MM-DD HH24:MI:SS'), 2092.14, 1, 'Transfer', 'BG09ZFZM01100945971274');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(240, 31, TO_TIMESTAMP('2024-10-29 01:23:48', 'YYYY-MM-DD HH24:MI:SS'), 1596.74, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(241, 49, TO_TIMESTAMP('2024-04-07 23:02:09', 'YYYY-MM-DD HH24:MI:SS'), 480.26, 0, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(242, 34, TO_TIMESTAMP('2024-01-04 16:13:28', 'YYYY-MM-DD HH24:MI:SS'), 2849.91, 1, 'Transfer', 'ME72894009311100270054');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(243, 41, TO_TIMESTAMP('2024-07-27 03:05:10', 'YYYY-MM-DD HH24:MI:SS'), 60.75, 0, 'Transfer', 'KW61JTLC4R435V2DG6509C03904E41');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(244, 35, TO_TIMESTAMP('2023-10-07 22:21:04', 'YYYY-MM-DD HH24:MI:SS'), 621.91, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(245, 43, TO_TIMESTAMP('2024-07-09 05:33:58', 'YYYY-MM-DD HH24:MI:SS'), 2253.37, 1, 'Transfer', 'JO67EWWQ0982405001000404226078');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(246, 40, TO_TIMESTAMP('2023-11-03 16:18:15', 'YYYY-MM-DD HH24:MI:SS'), 1401.1, 0, 'Transfer', 'AE238400860072500508261');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(247, 7, TO_TIMESTAMP('2025-04-01 09:39:04', 'YYYY-MM-DD HH24:MI:SS'), 346.62, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type) VALUES
-(248, 16, TO_TIMESTAMP('2025-03-21 10:27:03', 'YYYY-MM-DD HH24:MI:SS'), 2221.17, 1, 'Movement');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(249, 15, TO_TIMESTAMP('2024-02-09 23:20:57', 'YYYY-MM-DD HH24:MI:SS'), 1563.6, 0, 'Transfer', 'LB917362162562805455199138O2');
-INSERT INTO Transaction (SerialNumber, AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
-(250, 25, TO_TIMESTAMP('2024-11-04 06:59:42', 'YYYY-MM-DD HH24:MI:SS'), 2428.35, 0, 'Transfer', 'CY120052245923686F0N80E1V4HJ');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(31, TO_TIMESTAMP('2024-09-11 04:10:22', 'YYYY-MM-DD HH24:MI:SS'), 1143.99, 1, 'Transfer', 'MC81358170054294A29622D2975');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(31, TO_TIMESTAMP('2024-10-08 12:23:08', 'YYYY-MM-DD HH24:MI:SS'), 1546.99, 1, 'Transfer', 'VG42YJYA4300200834085003');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(32, TO_TIMESTAMP('2023-08-25 06:12:35', 'YYYY-MM-DD HH24:MI:SS'), 1297.88, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(5, TO_TIMESTAMP('2025-01-16 09:56:20', 'YYYY-MM-DD HH24:MI:SS'), 2405.49, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(25, TO_TIMESTAMP('2023-06-11 01:58:08', 'YYYY-MM-DD HH24:MI:SS'), 1404.53, 1, 'Transfer', 'SE3200400393040090639761');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2023-06-09 04:07:16', 'YYYY-MM-DD HH24:MI:SS'), 1236.63, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(6, TO_TIMESTAMP('2024-08-24 00:56:28', 'YYYY-MM-DD HH24:MI:SS'), 1256.31, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(11, TO_TIMESTAMP('2023-10-02 04:44:10', 'YYYY-MM-DD HH24:MI:SS'), 870.52, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(19, TO_TIMESTAMP('2023-07-06 07:26:16', 'YYYY-MM-DD HH24:MI:SS'), 2613.02, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(49, TO_TIMESTAMP('2024-01-28 08:06:59', 'YYYY-MM-DD HH24:MI:SS'), 1080.84, 1, 'Transfer', 'SA668225931F138A3D2FH519');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(29, TO_TIMESTAMP('2024-01-18 18:48:41', 'YYYY-MM-DD HH24:MI:SS'), 23.09, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(41, TO_TIMESTAMP('2025-02-22 05:17:02', 'YYYY-MM-DD HH24:MI:SS'), 820.21, 1, 'Transfer', 'BH05ITLX42913K4316Z8I3');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(40, TO_TIMESTAMP('2024-04-29 11:39:50', 'YYYY-MM-DD HH24:MI:SS'), 1459.63, 1, 'Transfer', 'JO59OCBH1974100201080030070890');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(50, TO_TIMESTAMP('2024-03-07 22:34:08', 'YYYY-MM-DD HH24:MI:SS'), 852.25, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(17, TO_TIMESTAMP('2024-07-15 01:02:12', 'YYYY-MM-DD HH24:MI:SS'), 2656.03, 1, 'Transfer', 'AE816691360407100150110');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(45, TO_TIMESTAMP('2024-04-28 01:59:02', 'YYYY-MM-DD HH24:MI:SS'), 122.58, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(27, TO_TIMESTAMP('2025-03-20 03:42:11', 'YYYY-MM-DD HH24:MI:SS'), 90.82, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(38, TO_TIMESTAMP('2024-08-09 09:30:56', 'YYYY-MM-DD HH24:MI:SS'), 2414.14, 1, 'Transfer', 'XK730728030847200485');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(2, TO_TIMESTAMP('2025-01-22 21:10:00', 'YYYY-MM-DD HH24:MI:SS'), 37.63, 1, 'Transfer', 'CH7085045V7LA3V29MD94');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(48, TO_TIMESTAMP('2024-03-01 13:05:11', 'YYYY-MM-DD HH24:MI:SS'), 1229.86, 1, 'Transfer', 'MU23XEOM0003700850572659002TRH');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(25, TO_TIMESTAMP('2024-03-20 14:20:53', 'YYYY-MM-DD HH24:MI:SS'), 46.81, 1, 'Transfer', 'RO61RLJK883283F41A400W77');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(45, TO_TIMESTAMP('2025-02-16 01:45:40', 'YYYY-MM-DD HH24:MI:SS'), 28.62, 1, 'Transfer', 'EE850938900006008303');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(33, TO_TIMESTAMP('2023-07-04 11:52:57', 'YYYY-MM-DD HH24:MI:SS'), 22.07, 1, 'Transfer', 'GB88FHMT63588283308059');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(3, TO_TIMESTAMP('2023-10-25 00:24:31', 'YYYY-MM-DD HH24:MI:SS'), 27.68, 1, 'Transfer', 'GI20XURB0L4378424885U56');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(8, TO_TIMESTAMP('2025-02-15 04:56:38', 'YYYY-MM-DD HH24:MI:SS'), 3.67, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(19, TO_TIMESTAMP('2024-08-22 04:45:11', 'YYYY-MM-DD HH24:MI:SS'), 2537.11, 1, 'Transfer', 'MT35HLKO4027987803581BN62803266');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(28, TO_TIMESTAMP('2024-09-23 10:38:52', 'YYYY-MM-DD HH24:MI:SS'), 2090.8, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(47, TO_TIMESTAMP('2024-07-31 01:48:54', 'YYYY-MM-DD HH24:MI:SS'), 2695.87, 1, 'Transfer', 'LU778997421900317Z50');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(34, TO_TIMESTAMP('2024-11-18 13:39:47', 'YYYY-MM-DD HH24:MI:SS'), 1095.38, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2023-08-16 05:15:01', 'YYYY-MM-DD HH24:MI:SS'), 257.83, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(3, TO_TIMESTAMP('2023-11-22 12:28:55', 'YYYY-MM-DD HH24:MI:SS'), 2998.68, 1, 'Transfer', 'BE59244041230097');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(41, TO_TIMESTAMP('2025-03-28 18:25:52', 'YYYY-MM-DD HH24:MI:SS'), 1330.79, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(12, TO_TIMESTAMP('2024-08-31 09:58:56', 'YYYY-MM-DD HH24:MI:SS'), 1078.73, 1, 'Transfer', 'NL62TSEP0065981815');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(27, TO_TIMESTAMP('2023-11-14 17:12:29', 'YYYY-MM-DD HH24:MI:SS'), 1218.55, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(8, TO_TIMESTAMP('2024-03-22 12:58:38', 'YYYY-MM-DD HH24:MI:SS'), 2031.62, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(14, TO_TIMESTAMP('2024-02-28 05:23:51', 'YYYY-MM-DD HH24:MI:SS'), 2129.99, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(45, TO_TIMESTAMP('2023-06-17 04:42:59', 'YYYY-MM-DD HH24:MI:SS'), 478.65, 1, 'Transfer', 'DE32506030020016058789');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(15, TO_TIMESTAMP('2024-11-23 05:34:33', 'YYYY-MM-DD HH24:MI:SS'), 1810.79, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(4, TO_TIMESTAMP('2025-01-28 08:05:18', 'YYYY-MM-DD HH24:MI:SS'), 1813.95, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(27, TO_TIMESTAMP('2023-07-17 06:49:21', 'YYYY-MM-DD HH24:MI:SS'), 2717.8, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(25, TO_TIMESTAMP('2024-05-19 02:25:15', 'YYYY-MM-DD HH24:MI:SS'), 2024.63, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(12, TO_TIMESTAMP('2023-04-14 17:25:47', 'YYYY-MM-DD HH24:MI:SS'), 2685.7, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(22, TO_TIMESTAMP('2023-04-26 22:59:43', 'YYYY-MM-DD HH24:MI:SS'), 1115.42, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(1, TO_TIMESTAMP('2024-01-13 21:27:33', 'YYYY-MM-DD HH24:MI:SS'), 239.95, 1, 'Transfer', 'KZ144400J55574326042');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(15, TO_TIMESTAMP('2023-11-21 14:45:56', 'YYYY-MM-DD HH24:MI:SS'), 866.57, 1, 'Transfer', 'DE76560080917298483465');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(21, TO_TIMESTAMP('2023-05-10 02:10:05', 'YYYY-MM-DD HH24:MI:SS'), 2231.52, 1, 'Transfer', 'NO7777344902719');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(27, TO_TIMESTAMP('2023-09-11 09:25:12', 'YYYY-MM-DD HH24:MI:SS'), 1079.66, 1, 'Transfer', 'EE102203450441323020');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(40, TO_TIMESTAMP('2023-08-19 06:16:39', 'YYYY-MM-DD HH24:MI:SS'), 2825.63, 1, 'Transfer', 'AZ41IIZX50702008402600480080');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(23, TO_TIMESTAMP('2025-01-23 10:59:44', 'YYYY-MM-DD HH24:MI:SS'), 1308.79, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(28, TO_TIMESTAMP('2023-12-15 07:40:05', 'YYYY-MM-DD HH24:MI:SS'), 2971.85, 1, 'Transfer', 'RS24993808400750063721');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(29, TO_TIMESTAMP('2024-10-11 07:57:10', 'YYYY-MM-DD HH24:MI:SS'), 906.34, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(8, TO_TIMESTAMP('2024-02-20 04:30:27', 'YYYY-MM-DD HH24:MI:SS'), 1414.39, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(20, TO_TIMESTAMP('2025-02-26 19:29:37', 'YYYY-MM-DD HH24:MI:SS'), 1829.53, 1, 'Transfer', 'TR951003572581364081076614');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(26, TO_TIMESTAMP('2023-04-15 06:56:03', 'YYYY-MM-DD HH24:MI:SS'), 2397.16, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(18, TO_TIMESTAMP('2024-07-24 17:01:46', 'YYYY-MM-DD HH24:MI:SS'), 570.24, 1, 'Transfer', 'LB59003542528E683695789635D5');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(3, TO_TIMESTAMP('2024-10-09 00:31:50', 'YYYY-MM-DD HH24:MI:SS'), 2269.94, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(24, TO_TIMESTAMP('2023-08-02 12:32:16', 'YYYY-MM-DD HH24:MI:SS'), 2358.07, 1, 'Transfer', 'MK93036P71960809668');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(45, TO_TIMESTAMP('2025-02-14 09:33:09', 'YYYY-MM-DD HH24:MI:SS'), 421.47, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(17, TO_TIMESTAMP('2023-05-01 09:03:23', 'YYYY-MM-DD HH24:MI:SS'), 2728.18, 1, 'Transfer', 'ME88002700770072001031');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(49, TO_TIMESTAMP('2024-12-20 12:17:29', 'YYYY-MM-DD HH24:MI:SS'), 2231.09, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(41, TO_TIMESTAMP('2025-03-07 10:38:47', 'YYYY-MM-DD HH24:MI:SS'), 2894.68, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(31, TO_TIMESTAMP('2024-03-28 11:51:46', 'YYYY-MM-DD HH24:MI:SS'), 2811.01, 1, 'Transfer', 'PL59180400751801808360406569');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(20, TO_TIMESTAMP('2023-10-27 09:11:15', 'YYYY-MM-DD HH24:MI:SS'), 2768.03, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(31, TO_TIMESTAMP('2024-07-19 13:55:40', 'YYYY-MM-DD HH24:MI:SS'), 603.58, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(28, TO_TIMESTAMP('2023-07-22 15:24:00', 'YYYY-MM-DD HH24:MI:SS'), 511.07, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(12, TO_TIMESTAMP('2024-10-25 05:08:13', 'YYYY-MM-DD HH24:MI:SS'), 2644.17, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(13, TO_TIMESTAMP('2023-12-23 16:50:25', 'YYYY-MM-DD HH24:MI:SS'), 471.55, 1, 'Transfer', 'GB35VEPX00100321005069');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(45, TO_TIMESTAMP('2023-08-25 19:03:24', 'YYYY-MM-DD HH24:MI:SS'), 1568.73, 1, 'Transfer', 'GR120100248J87F303Z5I931U09');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2024-03-19 09:43:35', 'YYYY-MM-DD HH24:MI:SS'), 920.56, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(40, TO_TIMESTAMP('2023-09-23 19:36:54', 'YYYY-MM-DD HH24:MI:SS'), 1470.47, 1, 'Transfer', 'CR11151659670080014474');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(49, TO_TIMESTAMP('2023-10-08 14:34:04', 'YYYY-MM-DD HH24:MI:SS'), 415.73, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2023-08-12 18:26:49', 'YYYY-MM-DD HH24:MI:SS'), 1272.88, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(16, TO_TIMESTAMP('2023-06-04 12:25:39', 'YYYY-MM-DD HH24:MI:SS'), 1177.2, 1, 'Transfer', 'AZ16CCQT13020086050730810933');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(31, TO_TIMESTAMP('2023-12-01 09:31:51', 'YYYY-MM-DD HH24:MI:SS'), 1950.89, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(28, TO_TIMESTAMP('2024-06-23 17:23:23', 'YYYY-MM-DD HH24:MI:SS'), 2186.48, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(37, TO_TIMESTAMP('2023-06-10 16:09:06', 'YYYY-MM-DD HH24:MI:SS'), 2594.41, 1, 'Transfer', 'PK52TCQZ0530060020082850');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(36, TO_TIMESTAMP('2025-03-02 20:12:27', 'YYYY-MM-DD HH24:MI:SS'), 1649.34, 1, 'Transfer', 'FO7215339316006004');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(31, TO_TIMESTAMP('2024-03-19 03:02:00', 'YYYY-MM-DD HH24:MI:SS'), 1367.54, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(4, TO_TIMESTAMP('2024-02-27 01:38:01', 'YYYY-MM-DD HH24:MI:SS'), 344.94, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(22, TO_TIMESTAMP('2023-08-01 10:37:23', 'YYYY-MM-DD HH24:MI:SS'), 1167.73, 1, 'Transfer', 'JO51FGZG0251407370075805455003');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(16, TO_TIMESTAMP('2024-11-28 09:59:44', 'YYYY-MM-DD HH24:MI:SS'), 2073.1, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(28, TO_TIMESTAMP('2024-04-18 03:23:31', 'YYYY-MM-DD HH24:MI:SS'), 2412.87, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(30, TO_TIMESTAMP('2023-09-08 15:03:01', 'YYYY-MM-DD HH24:MI:SS'), 1652.14, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(39, TO_TIMESTAMP('2023-10-24 07:51:08', 'YYYY-MM-DD HH24:MI:SS'), 2329.62, 1, 'Transfer', 'HR3830061512801635925');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(5, TO_TIMESTAMP('2023-12-17 19:49:20', 'YYYY-MM-DD HH24:MI:SS'), 113.33, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(47, TO_TIMESTAMP('2023-08-12 04:13:29', 'YYYY-MM-DD HH24:MI:SS'), 1803.64, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2023-12-01 04:57:03', 'YYYY-MM-DD HH24:MI:SS'), 2636.96, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(36, TO_TIMESTAMP('2025-02-18 07:11:35', 'YYYY-MM-DD HH24:MI:SS'), 2160.6, 1, 'Transfer', 'ES4866060061140190880616');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(5, TO_TIMESTAMP('2024-10-13 12:51:52', 'YYYY-MM-DD HH24:MI:SS'), 1864.8, 1, 'Transfer', 'DO76AQJS00800657002997001138');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(33, TO_TIMESTAMP('2023-10-08 22:09:22', 'YYYY-MM-DD HH24:MI:SS'), 827.27, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(28, TO_TIMESTAMP('2024-03-01 01:13:48', 'YYYY-MM-DD HH24:MI:SS'), 618.91, 1, 'Transfer', 'IS540089477003390090902514');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(18, TO_TIMESTAMP('2023-11-10 17:26:20', 'YYYY-MM-DD HH24:MI:SS'), 1947.54, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(33, TO_TIMESTAMP('2024-05-21 02:02:07', 'YYYY-MM-DD HH24:MI:SS'), 887.24, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(19, TO_TIMESTAMP('2024-11-02 13:22:44', 'YYYY-MM-DD HH24:MI:SS'), 2719.22, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(22, TO_TIMESTAMP('2024-10-06 07:17:18', 'YYYY-MM-DD HH24:MI:SS'), 1898.33, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(11, TO_TIMESTAMP('2024-01-18 12:04:08', 'YYYY-MM-DD HH24:MI:SS'), 1796.53, 1, 'Transfer', 'AZ61RYJC76899167759002300444');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(46, TO_TIMESTAMP('2023-07-12 11:58:16', 'YYYY-MM-DD HH24:MI:SS'), 1187.03, 1, 'Transfer', 'AE304102454190842104192');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(31, TO_TIMESTAMP('2024-01-28 10:23:41', 'YYYY-MM-DD HH24:MI:SS'), 1826.97, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(47, TO_TIMESTAMP('2024-02-06 05:47:39', 'YYYY-MM-DD HH24:MI:SS'), 586.67, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(48, TO_TIMESTAMP('2025-01-05 01:18:42', 'YYYY-MM-DD HH24:MI:SS'), 109.52, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(36, TO_TIMESTAMP('2024-04-08 14:02:17', 'YYYY-MM-DD HH24:MI:SS'), 93.4, 1, 'Transfer', 'AD23007588989IB75196H6W5');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(21, TO_TIMESTAMP('2023-11-23 22:01:47', 'YYYY-MM-DD HH24:MI:SS'), 345.35, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(9, TO_TIMESTAMP('2025-04-03 18:15:50', 'YYYY-MM-DD HH24:MI:SS'), 2096.8, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(17, TO_TIMESTAMP('2024-11-30 11:18:26', 'YYYY-MM-DD HH24:MI:SS'), 2971.76, 1, 'Transfer', 'IE38864908304120037001');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(42, TO_TIMESTAMP('2023-05-31 12:09:43', 'YYYY-MM-DD HH24:MI:SS'), 1786.92, 1, 'Transfer', 'SE3658300203201632040308');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(4, TO_TIMESTAMP('2024-06-05 17:49:48', 'YYYY-MM-DD HH24:MI:SS'), 1223.87, 1, 'Transfer', 'RS70051800999859036396');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(5, TO_TIMESTAMP('2024-06-08 14:27:51', 'YYYY-MM-DD HH24:MI:SS'), 326.44, 1, 'Transfer', 'LB2701628SYC13738983B1981526');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(41, TO_TIMESTAMP('2024-10-05 12:07:00', 'YYYY-MM-DD HH24:MI:SS'), 1795.84, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(33, TO_TIMESTAMP('2023-05-06 12:51:52', 'YYYY-MM-DD HH24:MI:SS'), 1353.04, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(12, TO_TIMESTAMP('2023-10-17 05:04:33', 'YYYY-MM-DD HH24:MI:SS'), 2544.85, 1, 'Transfer', 'GL3908030840027071');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(2, TO_TIMESTAMP('2024-02-19 09:47:04', 'YYYY-MM-DD HH24:MI:SS'), 2460.16, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(47, TO_TIMESTAMP('2024-07-01 23:23:04', 'YYYY-MM-DD HH24:MI:SS'), 941.17, 1, 'Transfer', 'QA61ZOJD7P4MD7D1M5754320F74L9');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(21, TO_TIMESTAMP('2024-08-17 14:14:30', 'YYYY-MM-DD HH24:MI:SS'), 2671.19, 1, 'Transfer', 'TN5640015030165704220349');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(28, TO_TIMESTAMP('2023-11-05 09:48:01', 'YYYY-MM-DD HH24:MI:SS'), 528.3, 1, 'Transfer', 'GI05SKHX4V230149C48V813');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(1, TO_TIMESTAMP('2023-07-04 22:50:52', 'YYYY-MM-DD HH24:MI:SS'), 565.79, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(28, TO_TIMESTAMP('2024-02-21 10:38:27', 'YYYY-MM-DD HH24:MI:SS'), 1464.08, 1, 'Transfer', 'IS780300139360250700676505');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(43, TO_TIMESTAMP('2024-08-12 11:53:52', 'YYYY-MM-DD HH24:MI:SS'), 2100.98, 1, 'Transfer', 'PK16ZAKJ0093100061900579');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(40, TO_TIMESTAMP('2024-02-27 22:32:03', 'YYYY-MM-DD HH24:MI:SS'), 1779.49, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(3, TO_TIMESTAMP('2024-12-05 05:53:13', 'YYYY-MM-DD HH24:MI:SS'), 1017.63, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(2, TO_TIMESTAMP('2023-11-30 03:59:24', 'YYYY-MM-DD HH24:MI:SS'), 1125.07, 1, 'Transfer', 'IL857096480140014300439');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(26, TO_TIMESTAMP('2025-01-10 09:03:36', 'YYYY-MM-DD HH24:MI:SS'), 1158.34, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(50, TO_TIMESTAMP('2024-09-06 16:56:17', 'YYYY-MM-DD HH24:MI:SS'), 1052.27, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(7, TO_TIMESTAMP('2024-10-18 22:19:19', 'YYYY-MM-DD HH24:MI:SS'), 623.93, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(7, TO_TIMESTAMP('2023-12-26 00:17:28', 'YYYY-MM-DD HH24:MI:SS'), 2874.12, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(40, TO_TIMESTAMP('2024-03-19 01:37:14', 'YYYY-MM-DD HH24:MI:SS'), 2965.81, 1, 'Transfer', 'GR830740308A47F0E639NK8M369');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(46, TO_TIMESTAMP('2024-03-23 01:06:27', 'YYYY-MM-DD HH24:MI:SS'), 2059.29, 1, 'Transfer', 'GT268016723T6Y10178684317V7Z');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(32, TO_TIMESTAMP('2024-01-23 08:51:57', 'YYYY-MM-DD HH24:MI:SS'), 1959.73, 1, 'Transfer', 'XK360860073674301647');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(40, TO_TIMESTAMP('2025-02-08 21:50:27', 'YYYY-MM-DD HH24:MI:SS'), 2184.59, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(32, TO_TIMESTAMP('2025-02-22 10:15:20', 'YYYY-MM-DD HH24:MI:SS'), 508.85, 1, 'Transfer', 'AL36057663820810914D529R2814');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(33, TO_TIMESTAMP('2023-11-03 16:09:24', 'YYYY-MM-DD HH24:MI:SS'), 532.99, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(11, TO_TIMESTAMP('2023-08-07 15:50:36', 'YYYY-MM-DD HH24:MI:SS'), 2708.52, 1, 'Transfer', 'PS378120552057718034768668038');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(28, TO_TIMESTAMP('2023-10-23 22:41:53', 'YYYY-MM-DD HH24:MI:SS'), 1451.56, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(34, TO_TIMESTAMP('2025-02-06 20:27:28', 'YYYY-MM-DD HH24:MI:SS'), 1125.31, 1, 'Transfer', 'PK82HFWX6006456400540863');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2024-04-29 11:47:33', 'YYYY-MM-DD HH24:MI:SS'), 12.57, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(44, TO_TIMESTAMP('2024-05-22 22:53:03', 'YYYY-MM-DD HH24:MI:SS'), 373.6, 1, 'Transfer', 'GR4200100552SM5264436F22214');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(25, TO_TIMESTAMP('2024-05-18 07:30:27', 'YYYY-MM-DD HH24:MI:SS'), 1904.87, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(36, TO_TIMESTAMP('2023-11-10 06:31:12', 'YYYY-MM-DD HH24:MI:SS'), 1182.23, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(42, TO_TIMESTAMP('2023-10-21 17:41:34', 'YYYY-MM-DD HH24:MI:SS'), 2744.1, 1, 'Transfer', 'XK699429073090060061');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(26, TO_TIMESTAMP('2024-11-21 08:36:12', 'YYYY-MM-DD HH24:MI:SS'), 980.56, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(27, TO_TIMESTAMP('2024-03-12 08:49:07', 'YYYY-MM-DD HH24:MI:SS'), 2045.48, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(45, TO_TIMESTAMP('2023-04-27 11:17:44', 'YYYY-MM-DD HH24:MI:SS'), 1555.96, 1, 'Transfer', 'MT64QFLM0042860M4282N5321E1363U');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(25, TO_TIMESTAMP('2024-03-13 12:10:00', 'YYYY-MM-DD HH24:MI:SS'), 336.57, 1, 'Transfer', 'MU19TIGX0097937800905642001GUF');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(11, TO_TIMESTAMP('2024-09-29 04:25:08', 'YYYY-MM-DD HH24:MI:SS'), 2309.73, 1, 'Transfer', 'AD64178500943N17D845Y93V');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(25, TO_TIMESTAMP('2024-10-06 14:48:59', 'YYYY-MM-DD HH24:MI:SS'), 2453.52, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(45, TO_TIMESTAMP('2023-09-30 22:48:27', 'YYYY-MM-DD HH24:MI:SS'), 1926.81, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(39, TO_TIMESTAMP('2024-12-23 14:02:04', 'YYYY-MM-DD HH24:MI:SS'), 1573.94, 1, 'Transfer', 'HR5730440670510373611');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(11, TO_TIMESTAMP('2025-03-21 12:57:06', 'YYYY-MM-DD HH24:MI:SS'), 303.9, 1, 'Transfer', 'SK2850320100700869004556');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(8, TO_TIMESTAMP('2023-09-10 09:20:46', 'YYYY-MM-DD HH24:MI:SS'), 286.28, 1, 'Transfer', 'JO71VDSP9001170920092782002647');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(47, TO_TIMESTAMP('2025-02-07 10:11:16', 'YYYY-MM-DD HH24:MI:SS'), 799.52, 1, 'Transfer', 'AL474009306255179N386268554L');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(14, TO_TIMESTAMP('2023-04-14 16:35:35', 'YYYY-MM-DD HH24:MI:SS'), 1302.1, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(41, TO_TIMESTAMP('2023-09-19 01:49:27', 'YYYY-MM-DD HH24:MI:SS'), 1387.5, 1, 'Transfer', 'IL440999910020603500897');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(26, TO_TIMESTAMP('2023-08-22 01:37:06', 'YYYY-MM-DD HH24:MI:SS'), 1008.2, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(3, TO_TIMESTAMP('2023-08-04 01:55:23', 'YYYY-MM-DD HH24:MI:SS'), 2572.42, 1, 'Transfer', 'NO2100573808691');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(43, TO_TIMESTAMP('2024-08-22 11:26:12', 'YYYY-MM-DD HH24:MI:SS'), 1092.97, 1, 'Transfer', 'GI11OTFID0852V198C73056');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(36, TO_TIMESTAMP('2023-05-26 11:23:06', 'YYYY-MM-DD HH24:MI:SS'), 974.93, 1, 'Transfer', 'BR2009016080850212004800595F4');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(32, TO_TIMESTAMP('2023-08-14 18:20:48', 'YYYY-MM-DD HH24:MI:SS'), 2828.19, 1, 'Transfer', 'MT86DPWG006293K9791B2349101555X');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(17, TO_TIMESTAMP('2024-06-17 01:38:12', 'YYYY-MM-DD HH24:MI:SS'), 2389.89, 1, 'Transfer', 'HR5227100748007933422');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(39, TO_TIMESTAMP('2023-06-12 12:57:31', 'YYYY-MM-DD HH24:MI:SS'), 424.59, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(1, TO_TIMESTAMP('2024-01-16 05:33:18', 'YYYY-MM-DD HH24:MI:SS'), 1163.37, 1, 'Transfer', 'MT65GDZE206827Y3198614697X40596');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(15, TO_TIMESTAMP('2024-08-13 05:35:39', 'YYYY-MM-DD HH24:MI:SS'), 1346.9, 1, 'Transfer', 'FR9701005457429E991832ESV81');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(3, TO_TIMESTAMP('2024-07-17 19:11:41', 'YYYY-MM-DD HH24:MI:SS'), 196.31, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(14, TO_TIMESTAMP('2024-10-28 16:19:47', 'YYYY-MM-DD HH24:MI:SS'), 1416.57, 1, 'Transfer', 'GE97NH0104500000800816');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(14, TO_TIMESTAMP('2024-07-24 14:58:38', 'YYYY-MM-DD HH24:MI:SS'), 474.24, 1, 'Transfer', 'MU05QBOV3355631300706490035CAI');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(25, TO_TIMESTAMP('2024-05-21 00:41:37', 'YYYY-MM-DD HH24:MI:SS'), 312.47, 1, 'Transfer', 'GI31YWLKP17Y484299W3624');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(40, TO_TIMESTAMP('2023-05-14 11:24:06', 'YYYY-MM-DD HH24:MI:SS'), 1307.94, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(8, TO_TIMESTAMP('2024-11-16 04:16:47', 'YYYY-MM-DD HH24:MI:SS'), 2373.26, 1, 'Transfer', 'SK2001007807058261453907');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(15, TO_TIMESTAMP('2024-03-17 01:52:12', 'YYYY-MM-DD HH24:MI:SS'), 2282.88, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(21, TO_TIMESTAMP('2025-01-26 00:08:18', 'YYYY-MM-DD HH24:MI:SS'), 1325.97, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(50, TO_TIMESTAMP('2024-02-02 19:50:21', 'YYYY-MM-DD HH24:MI:SS'), 2099.92, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(23, TO_TIMESTAMP('2024-06-02 09:06:23', 'YYYY-MM-DD HH24:MI:SS'), 392.23, 1, 'Transfer', 'GL9802990155496097');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(9, TO_TIMESTAMP('2025-02-16 19:47:06', 'YYYY-MM-DD HH24:MI:SS'), 2449.47, 1, 'Transfer', 'MC2135822179748508Z21A76633');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(46, TO_TIMESTAMP('2023-05-18 20:13:30', 'YYYY-MM-DD HH24:MI:SS'), 58.62, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(16, TO_TIMESTAMP('2025-03-08 14:24:28', 'YYYY-MM-DD HH24:MI:SS'), 249.55, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(39, TO_TIMESTAMP('2025-02-16 13:50:32', 'YYYY-MM-DD HH24:MI:SS'), 1471.21, 1, 'Transfer', 'GL3600140078009342');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(19, TO_TIMESTAMP('2023-10-13 13:37:19', 'YYYY-MM-DD HH24:MI:SS'), 2217.67, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(46, TO_TIMESTAMP('2023-08-08 17:40:23', 'YYYY-MM-DD HH24:MI:SS'), 615.75, 0, 'Transfer', 'SM98R9043005172004359Z9LC4U');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(45, TO_TIMESTAMP('2024-06-26 23:34:09', 'YYYY-MM-DD HH24:MI:SS'), 754.95, 0, 'Transfer', 'LT210073800201007283');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(42, TO_TIMESTAMP('2023-12-24 20:00:30', 'YYYY-MM-DD HH24:MI:SS'), 672.19, 1, 'Transfer', 'AL266000396937586763388972QM');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(48, TO_TIMESTAMP('2025-02-19 12:14:23', 'YYYY-MM-DD HH24:MI:SS'), 2866.91, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(49, TO_TIMESTAMP('2023-08-23 05:03:40', 'YYYY-MM-DD HH24:MI:SS'), 2958.11, 1, 'Transfer', 'CZ9803005092010950013099');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(6, TO_TIMESTAMP('2024-03-22 09:27:29', 'YYYY-MM-DD HH24:MI:SS'), 725.36, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(39, TO_TIMESTAMP('2023-11-28 20:02:09', 'YYYY-MM-DD HH24:MI:SS'), 2237.99, 0, 'Transfer', 'GI24NAQHQFP7075341KN630');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(25, TO_TIMESTAMP('2024-02-26 22:09:02', 'YYYY-MM-DD HH24:MI:SS'), 1841.47, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(42, TO_TIMESTAMP('2024-07-24 04:14:01', 'YYYY-MM-DD HH24:MI:SS'), 2627.67, 0, 'Transfer', 'GE37JO6008080023560629');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(8, TO_TIMESTAMP('2023-04-18 08:52:21', 'YYYY-MM-DD HH24:MI:SS'), 373.4, 0, 'Transfer', 'MT68UWJW06006O1PQ40V000910820F3');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(22, TO_TIMESTAMP('2025-01-17 10:54:01', 'YYYY-MM-DD HH24:MI:SS'), 2810.41, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(18, TO_TIMESTAMP('2024-11-19 14:44:16', 'YYYY-MM-DD HH24:MI:SS'), 1873.1, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(14, TO_TIMESTAMP('2024-12-25 04:38:39', 'YYYY-MM-DD HH24:MI:SS'), 1970.98, 1, 'Transfer', 'MD20874601895386127J1553');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2025-02-16 21:28:11', 'YYYY-MM-DD HH24:MI:SS'), 1252.47, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(18, TO_TIMESTAMP('2024-08-30 16:58:04', 'YYYY-MM-DD HH24:MI:SS'), 2736.76, 1, 'Transfer', 'DE38220189401007173304');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(4, TO_TIMESTAMP('2023-10-04 08:10:11', 'YYYY-MM-DD HH24:MI:SS'), 46.96, 1, 'Transfer', 'CY59300402827Y671854984Q66Q7');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(12, TO_TIMESTAMP('2024-03-25 23:52:07', 'YYYY-MM-DD HH24:MI:SS'), 507.62, 0, 'Transfer', 'SK9800148886593700600628');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(17, TO_TIMESTAMP('2024-02-19 22:33:15', 'YYYY-MM-DD HH24:MI:SS'), 60.36, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(2, TO_TIMESTAMP('2024-05-26 06:06:21', 'YYYY-MM-DD HH24:MI:SS'), 2687.33, 0, 'Transfer', 'BE13690100530097');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(27, TO_TIMESTAMP('2024-10-11 07:07:07', 'YYYY-MM-DD HH24:MI:SS'), 1377.12, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(8, TO_TIMESTAMP('2024-01-29 14:07:53', 'YYYY-MM-DD HH24:MI:SS'), 2829.23, 0, 'Transfer', 'RO75LWHY27249O24B8D0H94I');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(34, TO_TIMESTAMP('2024-06-12 13:23:38', 'YYYY-MM-DD HH24:MI:SS'), 1356.84, 0, 'Transfer', 'DK5650192002277063');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(29, TO_TIMESTAMP('2023-05-24 14:05:50', 'YYYY-MM-DD HH24:MI:SS'), 1853.66, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(44, TO_TIMESTAMP('2024-06-29 06:22:20', 'YYYY-MM-DD HH24:MI:SS'), 1053.75, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(11, TO_TIMESTAMP('2023-09-07 15:42:07', 'YYYY-MM-DD HH24:MI:SS'), 152.25, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(15, TO_TIMESTAMP('2023-11-10 01:17:42', 'YYYY-MM-DD HH24:MI:SS'), 2596.46, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(39, TO_TIMESTAMP('2023-04-21 01:17:48', 'YYYY-MM-DD HH24:MI:SS'), 501.24, 0, 'Transfer', 'GT4010K1764244R6372SR73122X2');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(21, TO_TIMESTAMP('2025-01-31 02:17:51', 'YYYY-MM-DD HH24:MI:SS'), 2627.63, 1, 'Transfer', 'MK94278551999291326');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(37, TO_TIMESTAMP('2023-05-06 06:26:17', 'YYYY-MM-DD HH24:MI:SS'), 1725.06, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(34, TO_TIMESTAMP('2023-07-30 20:20:03', 'YYYY-MM-DD HH24:MI:SS'), 2022.52, 1, 'Transfer', 'DK4467970039700513');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(16, TO_TIMESTAMP('2024-10-29 00:01:29', 'YYYY-MM-DD HH24:MI:SS'), 1542.99, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(6, TO_TIMESTAMP('2024-02-03 17:36:50', 'YYYY-MM-DD HH24:MI:SS'), 2320.82, 1, 'Transfer', 'AD2805551004458733H4186Y');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(4, TO_TIMESTAMP('2023-06-03 09:25:43', 'YYYY-MM-DD HH24:MI:SS'), 595.49, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(14, TO_TIMESTAMP('2024-06-09 18:40:52', 'YYYY-MM-DD HH24:MI:SS'), 25.28, 0, 'Transfer', 'MR0700600803988001001250955');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(11, TO_TIMESTAMP('2023-10-15 10:46:05', 'YYYY-MM-DD HH24:MI:SS'), 1070.99, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(38, TO_TIMESTAMP('2024-03-07 06:12:41', 'YYYY-MM-DD HH24:MI:SS'), 2508.57, 1, 'Transfer', 'AZ81SJUD80977320057420086750');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(29, TO_TIMESTAMP('2025-02-21 22:54:39', 'YYYY-MM-DD HH24:MI:SS'), 1860.99, 0, 'Transfer', 'BE83674203890059');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(17, TO_TIMESTAMP('2023-06-04 10:48:24', 'YYYY-MM-DD HH24:MI:SS'), 2894.51, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(1, TO_TIMESTAMP('2024-12-29 18:41:40', 'YYYY-MM-DD HH24:MI:SS'), 612.31, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(47, TO_TIMESTAMP('2024-08-22 00:08:04', 'YYYY-MM-DD HH24:MI:SS'), 950.77, 1, 'Transfer', 'JO93WCTO4873500497085603889279');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(13, TO_TIMESTAMP('2024-01-26 15:37:39', 'YYYY-MM-DD HH24:MI:SS'), 577.28, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(36, TO_TIMESTAMP('2023-11-04 06:59:21', 'YYYY-MM-DD HH24:MI:SS'), 2804.57, 0, 'Transfer', 'ES5049841006250016673534');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(5, TO_TIMESTAMP('2025-02-14 22:11:15', 'YYYY-MM-DD HH24:MI:SS'), 2174.02, 0, 'Transfer', 'BG15CMZM44541257636F11');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(38, TO_TIMESTAMP('2024-07-06 13:42:16', 'YYYY-MM-DD HH24:MI:SS'), 264.99, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(22, TO_TIMESTAMP('2023-07-10 13:57:25', 'YYYY-MM-DD HH24:MI:SS'), 1910.5, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(37, TO_TIMESTAMP('2023-09-21 10:33:05', 'YYYY-MM-DD HH24:MI:SS'), 1621.29, 1, 'Transfer', 'KW69SLPK5C6W790R86801Y12229881');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(30, TO_TIMESTAMP('2024-09-01 11:14:45', 'YYYY-MM-DD HH24:MI:SS'), 2642.02, 1, 'Transfer', 'BA282904784686611914');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(4, TO_TIMESTAMP('2023-08-08 09:26:35', 'YYYY-MM-DD HH24:MI:SS'), 2560.57, 1, 'Transfer', 'BR0670480030040290500600910I4');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(38, TO_TIMESTAMP('2024-06-13 10:54:06', 'YYYY-MM-DD HH24:MI:SS'), 1854.01, 1, 'Transfer', 'SK7551509087814812933553');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(34, TO_TIMESTAMP('2024-04-03 11:54:22', 'YYYY-MM-DD HH24:MI:SS'), 2916.3, 1, 'Transfer', 'BH24RXQGB4J70452098364');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(42, TO_TIMESTAMP('2023-09-20 01:12:28', 'YYYY-MM-DD HH24:MI:SS'), 2672.61, 1, 'Transfer', 'LB4548151L23S7093Q5O49487782');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(9, TO_TIMESTAMP('2024-04-09 12:16:26', 'YYYY-MM-DD HH24:MI:SS'), 101.88, 1, 'Transfer', 'RS56077700870088940621');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(9, TO_TIMESTAMP('2023-05-29 06:20:51', 'YYYY-MM-DD HH24:MI:SS'), 1160.76, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(24, TO_TIMESTAMP('2024-01-30 05:02:57', 'YYYY-MM-DD HH24:MI:SS'), 1176.61, 1, 'Transfer', 'LU90278142988YL85371');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(33, TO_TIMESTAMP('2025-02-01 21:47:05', 'YYYY-MM-DD HH24:MI:SS'), 2110.28, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(6, TO_TIMESTAMP('2024-01-20 06:50:25', 'YYYY-MM-DD HH24:MI:SS'), 663.64, 1, 'Transfer', 'AL5543415004644250N530IX28M8');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(24, TO_TIMESTAMP('2025-03-24 21:26:22', 'YYYY-MM-DD HH24:MI:SS'), 554.34, 1, 'Transfer', 'FO8500927704010584');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(29, TO_TIMESTAMP('2024-06-05 20:43:14', 'YYYY-MM-DD HH24:MI:SS'), 2316.86, 1, 'Transfer', 'SA36723E03Z06K0JK3881R1B');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(11, TO_TIMESTAMP('2023-08-28 23:36:50', 'YYYY-MM-DD HH24:MI:SS'), 748.64, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(22, TO_TIMESTAMP('2023-07-11 06:02:43', 'YYYY-MM-DD HH24:MI:SS'), 2315.11, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(48, TO_TIMESTAMP('2023-09-10 06:07:48', 'YYYY-MM-DD HH24:MI:SS'), 63.28, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(3, TO_TIMESTAMP('2024-12-19 23:49:53', 'YYYY-MM-DD HH24:MI:SS'), 1700.23, 1, 'Transfer', 'AL24004909027Z246SJ59093Y114');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(36, TO_TIMESTAMP('2023-07-03 20:55:17', 'YYYY-MM-DD HH24:MI:SS'), 48.74, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(38, TO_TIMESTAMP('2024-01-25 00:52:59', 'YYYY-MM-DD HH24:MI:SS'), 2092.14, 1, 'Transfer', 'BG09ZFZM01100945971274');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(31, TO_TIMESTAMP('2024-10-29 01:23:48', 'YYYY-MM-DD HH24:MI:SS'), 1596.74, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(49, TO_TIMESTAMP('2024-04-07 23:02:09', 'YYYY-MM-DD HH24:MI:SS'), 480.26, 0, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(34, TO_TIMESTAMP('2024-01-04 16:13:28', 'YYYY-MM-DD HH24:MI:SS'), 2849.91, 1, 'Transfer', 'ME72894009311100270054');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(41, TO_TIMESTAMP('2024-07-27 03:05:10', 'YYYY-MM-DD HH24:MI:SS'), 60.75, 0, 'Transfer', 'KW61JTLC4R435V2DG6509C03904E41');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(35, TO_TIMESTAMP('2023-10-07 22:21:04', 'YYYY-MM-DD HH24:MI:SS'), 621.91, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(43, TO_TIMESTAMP('2024-07-09 05:33:58', 'YYYY-MM-DD HH24:MI:SS'), 2253.37, 1, 'Transfer', 'JO67EWWQ0982405001000404226078');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(40, TO_TIMESTAMP('2023-11-03 16:18:15', 'YYYY-MM-DD HH24:MI:SS'), 1401.1, 0, 'Transfer', 'AE238400860072500508261');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(7, TO_TIMESTAMP('2025-04-01 09:39:04', 'YYYY-MM-DD HH24:MI:SS'), 346.62, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(16, TO_TIMESTAMP('2025-03-21 10:27:03', 'YYYY-MM-DD HH24:MI:SS'), 2221.17, 1, 'Movement');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(15, TO_TIMESTAMP('2024-02-09 23:20:57', 'YYYY-MM-DD HH24:MI:SS'), 1563.6, 0, 'Transfer', 'LB917362162562805455199138O2');
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type, IBAN) VALUES
+(25, TO_TIMESTAMP('2024-11-04 06:59:42', 'YYYY-MM-DD HH24:MI:SS'), 2428.35, 0, 'Transfer', 'CY120052245923686F0N80E1V4HJ');
 
--- 1 -- 2/2 -- join 2 tables
--- 2 -- 1/1 -- join 3 tables
--- 3 -- 2/2 -- GROUP BY + aggregation
--- 4 -- 1/1 -- EXISTS
--- 5 -- 1/1 -- IN + nested SELECT
+-- 3.1 -- 2/2 -- join 2 tables
+-- 3.2 -- 1/1 -- join 3 tables
+-- 3.3 -- 2/2 -- GROUP BY + aggregation
+-- 3.4 -- 1/1 -- EXISTS
+-- 3.5 -- 1/1 -- IN + nested SELECT
 
--- 1.1 -- Accounts owned by one client based on his name
+-- 3.1.1 -- Accounts owned by one client based on his name
 SELECT
     C.FirstName || ' ' || C.LastName AS Client,
     A.AccountID,
@@ -865,7 +919,7 @@ WHERE
     C.FirstName || ' ' || C.LastName = 'Paul Kerluke'
 ORDER BY A.Balance DESC;
 
--- 1.2 -- Account details with owner's name
+-- 3.1.2 -- Account details with owner's name
 SELECT
     A.AccountID,
     A.Balance,
@@ -877,7 +931,7 @@ FROM
 JOIN
     Client C ON A.OwnerID = C.ClientID;
 
--- 2.1 -- Accounts that client have authorized access to
+-- 3.2.1 -- Accounts that client have authorized access to
 SELECT
     A.AccountID,
     AA.AuthorizedLimit AS Limit,
@@ -893,7 +947,7 @@ WHERE
     C.ClientID = 3
 ORDER BY AA.AuthorizedLimit DESC;
 
--- 3.1 -- Client's number of accounts and total balance
+-- 3.3.1 -- Client's number of accounts and total balance
 SELECT
     C.ClientID,
     C.FirstName || ' ' || C.LastName AS Client,
@@ -907,7 +961,7 @@ GROUP BY
     C.ClientID, C.FirstName, C.LastName
 ORDER BY C.ClientID ASC;
 
--- 3.2 -- Total count of transactions by type in all accounts
+-- 3.3.2 -- Total count of transactions by type in all accounts
 SELECT
     T.Type,
     T.Incoming,
@@ -916,7 +970,7 @@ FROM
     Transaction T
 GROUP BY T.Type, T.Incoming;
 
--- 4.1 -- Clients who have authorized access, but do not own accounts
+-- 3.4.1 -- Clients who have authorized access, but do not own accounts
 SELECT
     C.ClientID,
     C.FirstName || ' ' || C.LastName AS Client
@@ -936,7 +990,7 @@ WHERE
         WHERE A.OwnerID = C.ClientID
     );
 
--- 5.1 -- Transactions for Accounts with Balances Above average threshold
+-- 3.5.1 -- Transactions for Accounts with Balances Above average threshold
 SELECT
     T.*
 FROM
@@ -954,3 +1008,35 @@ WHERE T.AccountID IN (
     )
 );
 
+-- 4.1 -- 2/2 -- triggers
+-- 4.2 -- 0/2 -- procedures
+       -- 0/1 -- cursor
+       -- 0/1 -- variable
+-- 4.3 -- 0/1 -- index + comparison
+-- 4.4 -- 0/1 -- EXPLAIN PLAN + GROUP BY
+-- 4.5 -- 0/1 -- access rights
+-- 4.6 -- 0/1 -- material view
+-- 4.7 -- 0/1 -- SELECT + WITH + CASE
+
+-- 4.1.1 -- Update account's balance on new transaction
+-- Implemented under table creation
+-- 4.1.1 before test
+SELECT * FROM Account WHERE  AccountID = 3;
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(3, TO_TIMESTAMP('2025-04-26 14:10:22', 'YYYY-MM-DD HH24:MI:SS'), 100, 1, 'Movement');
+-- 4.1.1 after test incoming
+SELECT * FROM Account WHERE  AccountID = 3;
+INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+(3, TO_TIMESTAMP('2025-04-26 14:10:22', 'YYYY-MM-DD HH24:MI:SS'), 200, 0, 'Movement');
+-- 4.1.1 after test outgoing
+SELECT * FROM Account WHERE  AccountID = 3;
+
+-- 4.1.2 -- Prevent overdraft
+-- Implemented under table creation
+-- 4.1.2 test
+SELECT * FROM Account WHERE  AccountID = 3;
+-- Commented out so it doesn't stop execution of all queries at once
+-- INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
+-- (253, 3, TO_TIMESTAMP('2025-04-26 14:10:22', 'YYYY-MM-DD HH24:MI:SS'), 11000, 0, 'Movement');
+
+-- 4.2.1 --
