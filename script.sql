@@ -105,7 +105,8 @@ BEGIN
 
 EXCEPTION
     WHEN err THEN
-        RAISE_APPLICATION_ERROR(-20001, 'Insufficient funds: Transaction would cause overdraft.');
+        DBMS_OUTPUT.PUT_LINE('Error: Insufficient funds.');
+        RAISE_APPLICATION_ERROR(-20001, 'Insufficient funds.');
 END;
 
 -- INSERT --
@@ -1009,9 +1010,9 @@ WHERE T.AccountID IN (
 );
 
 -- 4.1 -- 2/2 -- triggers
--- 4.2 -- 0/2 -- procedures
-       -- 0/1 -- cursor
-       -- 0/1 -- variable
+-- 4.2 -- 2/2 -- procedures
+       -- 1/1 -- cursor
+       -- 1/1 -- variable
 -- 4.3 -- 0/1 -- index + comparison
 -- 4.4 -- 0/1 -- EXPLAIN PLAN + GROUP BY
 -- 4.5 -- 0/1 -- access rights
@@ -1039,4 +1040,148 @@ SELECT * FROM Account WHERE  AccountID = 3;
 -- INSERT INTO Transaction (AccountID, Time, Amount, Incoming, Type) VALUES
 -- (253, 3, TO_TIMESTAMP('2025-04-26 14:10:22', 'YYYY-MM-DD HH24:MI:SS'), 11000, 0, 'Movement');
 
--- 4.2.1 --
+-- 4.2.1 -- Create authorized access
+CREATE OR REPLACE PROCEDURE CreateAuthorizedAccess (
+    parClientID NUMBER,
+    parAccountID NUMBER,
+    parEmployeeID NUMBER,
+    parAuthorizedLimit NUMBER
+)
+AS
+    clientCount NUMBER;
+    accCount NUMBER;
+    employeeCount NUMBER;
+    authCount NUMBER;
+    errClient EXCEPTION;
+    errAcc EXCEPTION;
+    errEmployee EXCEPTION;
+    errExists EXCEPTION;
+BEGIN
+    SELECT count(*) INTO clientCount FROM Client WHERE ClientID = parClientID;
+    SELECT count(*) INTO accCount FROM Account WHERE AccountID = parAccountID;
+    SELECT count(*) INTO employeeCount FROM Employee WHERE EmployeeID = parEmployeeID;
+
+    IF clientCount = 0 THEN
+        RAISE errClient;
+    ELSIF accCount = 0 THEN
+        RAISE errAcc;
+    ELSIF employeeCount = 0 THEN
+        RAISE errEmployee;
+    END IF;
+
+    SELECT count(*) INTO authCount
+    FROM AuthorizedAccess
+    WHERE ClientID = parClientID AND AccountID = parAccountID;
+
+    IF authCount > 0 THEN
+        RAISE errExists;
+    END IF;
+
+    INSERT INTO AuthorizedAccess (ClientID, AccountID, EmployeeID, AuthorizedLimit)
+    VALUES (parClientID, parAccountID, parEmployeeID, parAuthorizedLimit);
+    COMMIT;
+
+EXCEPTION
+    WHEN errClient THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error: Client does not exist.');
+        RAISE_APPLICATION_ERROR(-20002, 'Client does not exist.');
+    WHEN errAcc THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error: Account does not exist.');
+        RAISE_APPLICATION_ERROR(-20003, 'Account does not exist.');
+    WHEN errEmployee THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error: Employee does not exist.');
+         RAISE_APPLICATION_ERROR(-20004, 'Employee does not exist.');
+    WHEN errExists THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error: Authorization already exists.');
+        RAISE_APPLICATION_ERROR(-20005, 'Authorization already exists.');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('An unexpected error occurred: ' || SQLERRM);
+        RAISE;
+END CreateAuthorizedAccess;
+
+-- 4.2.1 before test
+SELECT * FROM AuthorizedAccess WHERE AccountID = 2;
+BEGIN
+    CreateAuthorizedAccess(13, 2, 5, 123.45);
+END;
+-- 4.2.1 after test
+SELECT * FROM AuthorizedAccess WHERE AccountID = 2;
+
+-- 4.2.2 Transfer funds between accounts
+CREATE OR REPLACE PROCEDURE TransferFundsBetweenAccounts (
+    parFromAccountID  NUMBER,
+    parToAccountID    NUMBER,
+    parAmount         NUMBER
+) IS
+    varFromBalance    NUMBER;
+    varToBalance      NUMBER;
+    errInsufficientFunds EXCEPTION;
+    errInvalidAccount  EXCEPTION;
+
+    CURSOR accCursor (account_id NUMBER) IS
+        SELECT Balance
+        FROM Account
+        WHERE AccountID = account_id;
+
+BEGIN
+    OPEN accCursor(parFromAccountID);
+    FETCH accCursor INTO varFromBalance;
+    IF accCursor%NOTFOUND THEN
+        RAISE errInvalidAccount;
+    END IF;
+    CLOSE accCursor;
+
+    OPEN accCursor(parToAccountID);
+    FETCH accCursor INTO varToBalance;
+    IF accCursor%NOTFOUND THEN
+        RAISE errInvalidAccount;
+    END IF;
+    CLOSE accCursor;
+
+    IF parAmount > varFromBalance THEN
+        RAISE errInsufficientFunds;
+    END IF;
+
+    UPDATE Account
+    SET Balance = Balance - parAmount
+    WHERE AccountID = parFromAccountID;
+
+    UPDATE Account
+    SET Balance = Balance + parAmount
+    WHERE AccountID = parToAccountID;
+
+    INSERT INTO Transaction (AccountID, Time, Amount, Incoming, "TYPE", IBAN)
+    VALUES (parFromAccountID, SYSTIMESTAMP, parAmount, 0, 'Transfer', NULL);
+
+    INSERT INTO Transaction (AccountID, Time, Amount, Incoming, "TYPE", IBAN)
+    VALUES (parToAccountID, SYSTIMESTAMP, parAmount, 1, 'Transfer', NULL);
+    COMMIT;
+
+EXCEPTION
+    WHEN errInsufficientFunds THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error: Insufficient funds.');
+        RAISE_APPLICATION_ERROR(-20006, 'Insufficient funds');
+    WHEN errInvalidAccount THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('Error: Invalid account ID.');
+        RAISE_APPLICATION_ERROR(-20007, 'Invalid account ID');
+    WHEN OTHERS THEN
+        ROLLBACK;
+        DBMS_OUTPUT.PUT_LINE('An unexpected error occurred: ' || SQLERRM);
+        RAISE;
+END TransferFundsBetweenAccounts;
+/
+
+-- 4.2.2 before test
+SELECT * FROM Account WHERE AccountID = 1 OR AccountID = 2;
+BEGIN
+    TransferFundsBetweenAccounts(1, 2, 100); -- Transfer 100 from account 1 to account 2
+END;
+-- 4.2.2 after test
+SELECT * FROM Account WHERE AccountID = 1 OR AccountID = 2;
