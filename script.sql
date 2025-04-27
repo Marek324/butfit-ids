@@ -1013,8 +1013,8 @@ WHERE T.AccountID IN (
 -- 4.2 -- 2/2 -- procedures
        -- 1/1 -- cursor
        -- 1/1 -- variable
--- 4.3 -- 0/1 -- index + comparison
--- 4.4 -- 0/1 -- EXPLAIN PLAN + GROUP BY
+-- 4.3 -- 1/1 -- index + comparison
+-- 4.4 -- 1/1 -- EXPLAIN PLAN + GROUP BY
 -- 4.5 -- 0/1 -- access rights
 -- 4.6 -- 0/1 -- material view
 -- 4.7 -- 0/1 -- SELECT + WITH + CASE
@@ -1185,3 +1185,55 @@ BEGIN
 END;
 -- 4.2.2 after test
 SELECT * FROM Account WHERE AccountID = 1 OR AccountID = 2;
+
+-- 4.3 + 4.4 Query to compare accounts owned by men and women, account ignored if owner's gender isn't stored
+
+-- Without Index
+EXPLAIN PLAN FOR
+SELECT
+    c.Gender,
+    COUNT(a.AccountID) AS NumberOfAccounts,
+    AVG(a.Balance) AS AverageBalance,
+    SUM(t.Amount) AS TotalTransactionAmount
+FROM
+    Client c
+JOIN
+    Account a ON c.ClientID = a.OwnerID
+JOIN
+    Transaction t ON a.AccountID = t.AccountID
+WHERE a.Balance > (SELECT MEDIAN(Balance) FROM Account)
+AND c.Gender IS NOT NULL
+GROUP BY
+    c.Gender;
+
+-- 4.4 no idx
+SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
+
+CREATE INDEX IDX_AccountBalance ON Account(Balance);
+-- further optimization
+-- CREATE INDEX IDX_Transaction ON Transaction(AccountID, Amount);
+
+EXPLAIN PLAN FOR
+SELECT
+    c.Gender,
+    COUNT(a.AccountID) AS NumberOfAccounts,
+    AVG(a.Balance) AS AverageBalance,
+    SUM(t.Amount) AS TotalTransactionAmount
+FROM
+    Client c
+JOIN
+    Account a ON c.ClientID = a.OwnerID
+JOIN
+    Transaction t ON a.AccountID = t.AccountID
+WHERE a.Balance > (SELECT MEDIAN(Balance) FROM Account)
+AND c.Gender IS NOT NULL
+GROUP BY
+    c.Gender;
+
+-- 4.4 1 idx
+SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
+
+DROP INDEX IDX_AccountBalance;
+-- DROP INDEX IDX_Transaction;
+
+-- 4.5 Access rights
