@@ -4,6 +4,7 @@ DROP TABLE Account CASCADE CONSTRAINTS;
 DROP TABLE Employee CASCADE CONSTRAINTS;
 DROP TABLE Client CASCADE CONSTRAINTS;
 DROP SEQUENCE TransactionSerialNumSeq;
+DROP MATERIALIZED VIEW ClientActivitySummary; 
 
 -- Create Client table
 CREATE TABLE Client (
@@ -68,6 +69,7 @@ BEGIN
     :NEW.SerialNumber := TransactionSerialNumSeq.NEXTVAL;
   END IF;
 END;
+/
 
 -- 4.1.1 -- Update account's balance on new transaction
 CREATE OR REPLACE TRIGGER AccountBalanceUpdate
@@ -84,6 +86,7 @@ BEGIN
         WHERE AccountID = :NEW.AccountID;
     END IF;
 END;
+/
 
 -- 4.1.2 -- Prevent overdraft
 CREATE OR REPLACE TRIGGER PreventOverdraft
@@ -108,6 +111,7 @@ EXCEPTION
         DBMS_OUTPUT.PUT_LINE('Error: Insufficient funds.');
         RAISE_APPLICATION_ERROR(-20001, 'Insufficient funds.');
 END;
+/
 
 -- INSERT --
 --  Client table
@@ -1015,9 +1019,9 @@ WHERE T.AccountID IN (
        -- 1/1 -- variable
 -- 4.3 -- 1/1 -- index + comparison
 -- 4.4 -- 1/1 -- EXPLAIN PLAN + GROUP BY
--- 4.5 -- 0/1 -- access rights
--- 4.6 -- 0/1 -- material view
--- 4.7 -- 0/1 -- SELECT + WITH + CASE
+-- 4.5 -- 1/1 -- access rights
+-- 4.6 -- 1/1 -- material view
+-- 4.7 -- 1/1 -- SELECT + WITH + CASE
 
 -- 4.1.1 -- Update account's balance on new transaction
 -- Implemented under table creation
@@ -1109,6 +1113,7 @@ SELECT * FROM AuthorizedAccess WHERE AccountID = 2;
 BEGIN
     CreateAuthorizedAccess(13, 2, 5, 123.45);
 END;
+/
 -- 4.2.1 after test
 SELECT * FROM AuthorizedAccess WHERE AccountID = 2;
 
@@ -1183,6 +1188,7 @@ SELECT * FROM Account WHERE AccountID = 1 OR AccountID = 2;
 BEGIN
     TransferFundsBetweenAccounts(1, 2, 100); -- Transfer 100 from account 1 to account 2
 END;
+/
 -- 4.2.2 after test
 SELECT * FROM Account WHERE AccountID = 1 OR AccountID = 2;
 
@@ -1237,3 +1243,47 @@ DROP INDEX IDX_AccountBalance;
 -- DROP INDEX IDX_Transaction;
 
 -- 4.5 Access rights
+GRANT ALL ON Client TO xkomanj00;
+GRANT ALL ON Employee TO xkomanj00;
+GRANT ALL ON Account TO xkomanj00;
+GRANT ALL ON AuthorizedAccess TO xkomanj00;
+GRANT ALL ON Transaction TO xkomanj00;
+GRANT ALL ON ClientActivitySummary TO xkomanj00;
+GRANT ALL ON TransactionSerialNumSeq TO xkomanj00;
+GRANT EXECUTE ON TransactionSerialNumTrigger TO xkomanj00;
+GRANT EXECUTE ON AccountBalanceUpdate TO xkomanj00;
+GRANT EXECUTE ON PreventOverdraft TO xkomanj00;
+GRANT EXECUTE ON CreateAuthorizedAccess TO xkomanj00;
+GRANT EXECUTE ON TransferFundsBetweenAccounts TO xkomanj00;
+
+-- 4.6 Material View
+-- Retrieve the client Activity in the last 3 months
+CREATE MATERIALIZED VIEW ClientActivitySummary AS
+SELECT
+    c.ClientID,
+    c.FirstName || ' ' || c.LastName AS ClientName,
+    COUNT(DISTINCT a.AccountID) AS NumberOfAccounts,
+    COUNT(t.SerialNumber) AS NumberOfTransactions,
+    SUM(CASE WHEN t.Incoming = 1 THEN t.Amount ELSE 0 END) AS TotalReceived,
+    SUM(CASE WHEN t.Incoming = 0 THEN t.Amount ELSE 0 END) AS TotalSent
+FROM Client c
+LEFT JOIN Account a ON c.ClientID = a.OwnerID
+LEFT JOIN Transaction t ON a.AccountID = t.AccountID
+WHERE t.Time >= SYSDATE - 90
+GROUP BY c.ClientID, c.FirstName, c.LastName;
+
+-- 4.6 According to the activity categorize the customer
+SELECT
+    ClientID,
+    ClientName,
+    NumberOfAccounts,
+    NumberOfTransactions,
+    TotalReceived,
+    TotalSent,
+    CASE
+        WHEN NumberOfTransactions > 4 THEN 'Very Active'
+        WHEN NumberOfTransactions BETWEEN 1 AND 4 THEN 'Moderately Active'
+        ELSE 'Inactive'
+    END AS ActivityStatus
+FROM ClientActivitySummary
+ORDER BY NumberOfTransactions DESC;
