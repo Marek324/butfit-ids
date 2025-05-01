@@ -4,7 +4,7 @@ DROP TABLE Account CASCADE CONSTRAINTS;
 DROP TABLE Employee CASCADE CONSTRAINTS;
 DROP TABLE Client CASCADE CONSTRAINTS;
 DROP SEQUENCE TransactionSerialNumSeq;
-DROP MATERIALIZED VIEW ClientActivitySummary; 
+DROP MATERIALIZED VIEW ClientActivitySummary;
 
 -- Create Client table
 CREATE TABLE Client (
@@ -1248,11 +1248,6 @@ GRANT ALL ON Employee TO xkomanj00;
 GRANT ALL ON Account TO xkomanj00;
 GRANT ALL ON AuthorizedAccess TO xkomanj00;
 GRANT ALL ON Transaction TO xkomanj00;
-GRANT ALL ON ClientActivitySummary TO xkomanj00;
-GRANT ALL ON TransactionSerialNumSeq TO xkomanj00;
-GRANT EXECUTE ON TransactionSerialNumTrigger TO xkomanj00;
-GRANT EXECUTE ON AccountBalanceUpdate TO xkomanj00;
-GRANT EXECUTE ON PreventOverdraft TO xkomanj00;
 GRANT EXECUTE ON CreateAuthorizedAccess TO xkomanj00;
 GRANT EXECUTE ON TransferFundsBetweenAccounts TO xkomanj00;
 
@@ -1266,9 +1261,9 @@ SELECT
     COUNT(t.SerialNumber) AS NumberOfTransactions,
     SUM(CASE WHEN t.Incoming = 1 THEN t.Amount ELSE 0 END) AS TotalReceived,
     SUM(CASE WHEN t.Incoming = 0 THEN t.Amount ELSE 0 END) AS TotalSent
-FROM Client c
-LEFT JOIN Account a ON c.ClientID = a.OwnerID
-LEFT JOIN Transaction t ON a.AccountID = t.AccountID
+FROM XHRICMA00.Client c
+LEFT JOIN XHRICMA00.Account a ON c.ClientID = a.OwnerID
+LEFT JOIN XHRICMA00.Transaction t ON a.AccountID = t.AccountID
 WHERE t.Time >= SYSDATE - 90
 GROUP BY c.ClientID, c.FirstName, c.LastName;
 
